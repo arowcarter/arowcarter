@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Tactical Map War Game v2.1 — WEGO, Auto-Engagement &amp; Custom Maps</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
   <style>
     :root {
@@ -171,6 +172,9 @@
       <button id="btn-open-map-hud" class="tac-btn px-2.5 py-1.5 rounded-lg bg-gradient-to-b from-teal-600 to-teal-700 hover:from-teal-500 hover:to-teal-600 text-white text-xs font-bold tracking-wide" title="Upload Custom Map (.txt, .json, .csv)">
         🗺️ Map
       </button>
+      <button id="btn-open-net" class="tac-btn px-2.5 py-1.5 rounded-lg bg-gradient-to-b from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 text-white text-xs font-bold tracking-wide" title="Play online against a friend">
+        🌐 Online
+      </button>
       <button id="btn-toggle-pins" class="hidden tac-btn px-2 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-rose-300 text-xs font-semibold" title="Toggle Imported Map Landmark Pins">
         Pins: ON
       </button>
@@ -311,6 +315,32 @@
       </div>
     </aside>
   </main>
+
+  <!-- ONLINE MULTIPLAYER MODAL -->
+  <div id="net-modal" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3">
+    <div class="bg-[#111827] border border-indigo-500/50 rounded-2xl max-w-md w-full shadow-2xl overflow-hidden">
+      <div class="px-5 py-3.5 bg-slate-900 border-b border-slate-700 flex items-center justify-between">
+        <h3 class="text-base font-extrabold text-slate-100 tracking-wide uppercase">🌐 Online Multiplayer</h3>
+        <button id="btn-close-net" class="text-slate-400 hover:text-white text-lg leading-none">✕</button>
+      </div>
+      <div class="p-5 space-y-4 text-sm text-slate-300">
+        <p class="text-xs text-slate-400">Peer-to-peer: no server needed. The host plays Blue (Player 1); the joiner plays Red (Player 2). Orders stay secret until both players lock.</p>
+        <div id="net-idle" class="space-y-3">
+          <button id="btn-net-host" class="tac-btn w-full py-2.5 rounded-xl bg-gradient-to-b from-indigo-500 to-indigo-700 text-white font-extrabold uppercase tracking-wider text-xs">Host a Game (Blue)</button>
+          <div class="flex gap-2">
+            <input id="net-code-input" maxlength="5" placeholder="ROOM CODE" class="flex-1 px-3 py-2 rounded-lg bg-slate-950 border border-slate-600 text-slate-100 uppercase tracking-widest font-mono-tac text-center" />
+            <button id="btn-net-join" class="tac-btn px-4 py-2 rounded-xl bg-gradient-to-b from-rose-500 to-rose-700 text-white font-extrabold uppercase tracking-wider text-xs">Join (Red)</button>
+          </div>
+        </div>
+        <div id="net-code-box" class="hidden text-center">
+          <div class="text-[10px] uppercase tracking-widest text-slate-500">Room code — share with your opponent</div>
+          <div id="net-code-display" class="text-3xl font-extrabold tracking-[0.4em] text-indigo-300 font-mono-tac"></div>
+        </div>
+        <div id="net-status" class="text-xs text-center text-slate-400">Not connected.</div>
+        <button id="btn-net-disconnect" class="hidden tac-btn w-full py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs uppercase">Disconnect</button>
+      </div>
+    </div>
+  </div>
 
   <!-- CUSTOM MAP LOADER MODAL -->
   <div id="map-upload-modal" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6">
@@ -714,6 +744,207 @@
       // Custom Uploaded Map State (null = built-in 68"x44" map)
       customMap: null
     };
+
+    // --- ONLINE MULTIPLAYER (PeerJS, deterministic lockstep + host snapshot) ---
+    const NET = {
+      peer: null, conn: null, role: 0, seed: 1,
+      locked: { 1: false, 2: false },
+      peerOrders: [],
+      pendingSync: null, syncResolve: null,
+      pendingNext: false,
+      applyingRemote: false
+    };
+    let lastMapSrc = null; // {text, name, kind:'any'|'compact'} or null for the default map
+    let rngState = 1;
+
+    function netActive() { return !!(NET.conn && NET.conn.open); }
+    function netSend(msg) { if (netActive()) NET.conn.send(msg); }
+    function netPeerRole() { return NET.role === 1 ? 2 : 1; }
+
+    function netRand() { // mulberry32
+      rngState = (rngState + 0x6D2B79F5) >>> 0;
+      let t = rngState;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    }
+
+    function netSetStatus(text) {
+      document.getElementById('net-status').textContent = text;
+      const btn = document.getElementById('btn-open-net');
+      btn.textContent = netActive() ? `🌐 Online: ${NET.role === 1 ? 'Blue' : 'Red'}` : '🌐 Online';
+    }
+
+    function netSnapshot() {
+      return JSON.parse(JSON.stringify({
+        entities: state.entities, ruins: state.ruins, missiles: state.missiles,
+        stats: state.stats, nextEntityId
+      }));
+    }
+
+    function netApplySnapshot(s) {
+      state.entities = s.entities;
+      state.ruins = s.ruins;
+      state.missiles = s.missiles;
+      state.stats = s.stats;
+      nextEntityId = s.nextEntityId;
+    }
+
+    // Host sends the authoritative post-turn state; the joiner waits for it so animation drift cannot desync.
+    async function netSyncPoint() {
+      if (!netActive()) return;
+      if (NET.role === 1) {
+        netSend({ t: 'sync', snap: netSnapshot() });
+        return;
+      }
+      if (!NET.pendingSync) await new Promise(r => { NET.syncResolve = r; });
+      netApplySnapshot(NET.pendingSync);
+      NET.pendingSync = null;
+    }
+
+    function netMaybeResolve() {
+      if (!netActive() || state.phase !== 'PLANNING') return;
+      if (!NET.locked[1] || !NET.locked[2]) return;
+      state.orders[netPeerRole()] = NET.peerOrders;
+      NET.peerOrders = [];
+      NET.locked = { 1: false, 2: false };
+      runSimultaneousResolution();
+    }
+
+    function netApplyMap(src) {
+      NET.applyingRemote = true;
+      try {
+        lastMapSrc = src;
+        if (!src) resetToDefaultMap();
+        else applyCustomMap(src.kind === 'compact' ? parseCompactTxtMap(src.text, src.name) : parseAnyMapText(src.text, src.name));
+      } catch (err) {
+        console.error(err);
+        showToast('Could not load the opponent\'s map.', 'danger');
+      } finally {
+        NET.applyingRemote = false;
+      }
+    }
+
+    function netOnMapChanged() {
+      if (!NET.applyingRemote) netSend({ t: 'map', src: lastMapSrc });
+    }
+
+    function netHandle(msg) {
+      switch (msg.t) {
+        case 'hello':
+          NET.role = 2;
+          NET.seed = msg.seed;
+          netApplyMap(msg.src);
+          resetCampaign(false);
+          netSetStatus('Connected — you are Red (Player 2).');
+          showToast('Connected! You are Red (Player 2). Blue deploys first.', 'success');
+          document.getElementById('net-modal').classList.add('hidden');
+          break;
+        case 'map':
+          netApplyMap(msg.src);
+          break;
+        case 'setup': {
+          const before = state.setupStep;
+          if (state.phase === 'SETUP') handleSetupClick(msg.x, msg.y);
+          if (state.setupStep === before) showToast('Desync: setup placement rejected.', 'danger');
+          break;
+        }
+        case 'autodeploy':
+          autoDeploySetup();
+          break;
+        case 'orders':
+          NET.peerOrders = msg.orders;
+          NET.locked[netPeerRole()] = true;
+          if (state.phase === 'PLANNING' && !NET.locked[NET.role]) showToast('Opponent has locked their orders.', 'info');
+          netMaybeResolve();
+          break;
+        case 'sync':
+          NET.pendingSync = msg.snap;
+          if (NET.syncResolve) { const r = NET.syncResolve; NET.syncResolve = null; r(); }
+          break;
+        case 'next':
+          if (state.phase === 'POST_RESOLUTION') beginNextTurn();
+          else NET.pendingNext = true;
+          break;
+        case 'reset':
+          resetCampaign(true);
+          break;
+      }
+    }
+
+    function netAttach(conn) {
+      NET.conn = conn;
+      conn.on('open', () => {
+        if (NET.role === 1) {
+          NET.seed = (Math.random() * 4294967296) >>> 0;
+          netSend({ t: 'hello', seed: NET.seed, src: lastMapSrc });
+          resetCampaign(false);
+          netSetStatus('Connected — you are Blue (Player 1).');
+          showToast('Opponent connected! You are Blue (Player 1) and deploy first.', 'success');
+          document.getElementById('net-modal').classList.add('hidden');
+        }
+        document.getElementById('btn-net-disconnect').classList.remove('hidden');
+        updateUI();
+      });
+      conn.on('data', msg => { try { netHandle(msg); } catch (err) { console.error(err); } });
+      conn.on('close', () => {
+        const wasLive = NET.conn === conn;
+        if (wasLive) NET.conn = null;
+        NET.locked = { 1: false, 2: false };
+        if (NET.syncResolve) { const r = NET.syncResolve; NET.syncResolve = null; NET.pendingSync = NET.pendingSync || netSnapshot(); r(); }
+        netSetStatus('Disconnected.');
+        if (wasLive) showToast('Opponent disconnected. Hot-seat play continues locally.', 'warn');
+        updateUI();
+      });
+      conn.on('error', err => { console.error(err); netSetStatus('Connection error: ' + (err.type || err)); });
+    }
+
+    function netDisconnect() {
+      if (NET.conn) NET.conn.close();
+      if (NET.peer) NET.peer.destroy();
+      NET.conn = null; NET.peer = null; NET.role = 0;
+      document.getElementById('net-code-box').classList.add('hidden');
+      document.getElementById('net-idle').classList.remove('hidden');
+      document.getElementById('btn-net-disconnect').classList.add('hidden');
+      netSetStatus('Not connected.');
+      updateUI();
+    }
+
+    function netHost() {
+      if (typeof Peer === 'undefined') { netSetStatus('PeerJS failed to load (check your internet connection).'); return; }
+      netDisconnect();
+      const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+      let code = '';
+      for (let i = 0; i < 5; i++) code += alphabet[Math.floor(Math.random() * alphabet.length)];
+      NET.role = 1;
+      NET.peer = new Peer('tacwar-' + code);
+      NET.peer.on('open', () => {
+        document.getElementById('net-code-display').textContent = code;
+        document.getElementById('net-code-box').classList.remove('hidden');
+        document.getElementById('net-idle').classList.add('hidden');
+        document.getElementById('btn-net-disconnect').classList.remove('hidden');
+        netSetStatus('Waiting for opponent to join…');
+      });
+      NET.peer.on('connection', c => {
+        if (netActive()) { c.on('open', () => c.close()); return; }
+        netAttach(c);
+      });
+      NET.peer.on('error', err => netSetStatus('Network error: ' + err.type));
+    }
+
+    function netJoin(code) {
+      if (typeof Peer === 'undefined') { netSetStatus('PeerJS failed to load (check your internet connection).'); return; }
+      code = code.trim().toUpperCase();
+      if (code.length !== 5) { netSetStatus('Enter the 5-character room code.'); return; }
+      netDisconnect();
+      NET.role = 2;
+      NET.peer = new Peer();
+      NET.peer.on('open', () => {
+        netSetStatus('Connecting…');
+        netAttach(NET.peer.connect('tacwar-' + code, { reliable: true, serialization: 'json' }));
+      });
+      NET.peer.on('error', err => netSetStatus(err.type === 'peer-unavailable' ? 'Room not found.' : 'Network error: ' + err.type));
+    }
 
     // --- CANVAS SETUP & CAMERA TRANSFORM ---
     const canvas = document.getElementById('game-canvas');
@@ -1333,9 +1564,11 @@
       const summary = `Loaded "${mapObj.name}" (${mapObj.cols}×${mapObj.rows} → ${MAP_W.toFixed(1)}"×${MAP_H.toFixed(1)}") • W:${c.W} G:${c.G} R:${c.R} B:${c.B} (Impassable) • ${mapObj.pins.length} Pin(s)`;
       showToast(summary, 'success');
       addLog(`🗺️ <strong>CUSTOM MAP LOADED:</strong> ${summary}`, 'emerald');
+      netOnMapChanged();
     }
 
     function resetToDefaultMap() {
+      if (!NET.applyingRemote) lastMapSrc = null;
       state.customMap = null;
       MAP_W = 68;
       MAP_H = 44;
@@ -1350,6 +1583,7 @@
       resizeCanvas();
       showToast('Restored Default 68"×44" Tactical Map.', 'info');
       addLog('🗺️ Restored Default 68"×44" Tactical Map.', 'amber');
+      netOnMapChanged();
     }
 
     // --- GEOMETRY & TERRAIN HELPERS (INTEGRATED WITH CUSTOM MAP & IMPASSABLE BUILDINGS) ---
@@ -1536,7 +1770,7 @@
     }
 
     function rollDie(sides) {
-      return Math.floor(Math.random() * Math.max(1, sides)) + 1;
+      return Math.floor((netActive() ? netRand() : Math.random()) * Math.max(1, sides)) + 1;
     }
 
     function pColor(owner) {
@@ -1565,6 +1799,7 @@
     }
 
     function getRemainingAP(player) {
+      if (netActive() && NET.locked[player]) return 0;
       return Math.max(0, MAX_AP - getQueuedAP(player));
     }
 
@@ -2089,7 +2324,7 @@
     }
 
     function undoLastOrder() {
-      if (state.phase !== 'PLANNING') return;
+      if (state.phase !== 'PLANNING' || (netActive() && NET.locked[NET.role])) return;
       const list = state.orders[state.activePlayer];
       if (list.length === 0) return;
       list.pop();
@@ -2098,7 +2333,7 @@
     }
 
     function clearAllOrders() {
-      if (state.phase !== 'PLANNING') return;
+      if (state.phase !== 'PLANNING' || (netActive() && NET.locked[NET.role])) return;
       state.orders[state.activePlayer] = [];
       setMode('IDLE');
       SFX.play('click');
@@ -2108,6 +2343,18 @@
     // --- HOTSEAT LOCK & WEGO TRANSITION ---
     function lockActivePlayerOrders() {
       if (state.phase !== 'PLANNING') return;
+      if (netActive()) {
+        if (NET.locked[NET.role]) return;
+        setMode('IDLE');
+        state.selectedId = null;
+        SFX.play('lock');
+        NET.locked[NET.role] = true;
+        netSend({ t: 'orders', orders: state.orders[NET.role] });
+        showToast(NET.locked[netPeerRole()] ? 'Orders locked — resolving…' : 'Orders locked. Waiting for opponent…', 'info');
+        updateUI();
+        netMaybeResolve();
+        return;
+      }
       setMode('IDLE');
       state.selectedId = null;
       SFX.play('lock');
@@ -2202,6 +2449,7 @@
     }
 
     async function runSimultaneousResolution() {
+      if (netActive()) rngState = (NET.seed + state.turn * 7919) >>> 0;
       state.phase = 'RESOLVING';
       state.selectedId = null;
       document.getElementById('resolution-banner').classList.remove('hidden');
@@ -2517,6 +2765,7 @@
 
       state.orders[1] = [];
       state.orders[2] = [];
+      await netSyncPoint();
 
       const p1MainAlive = state.entities.filter(e => e.kind === 'structure' && e.owner === 1 && e.isOriginalMain).length;
       const p2MainAlive = state.entities.filter(e => e.kind === 'structure' && e.owner === 2 && e.isOriginalMain).length;
@@ -2533,10 +2782,21 @@
       document.getElementById('btn-next-turn').classList.remove('hidden');
       showToast(`Turn ${state.turn} Resolved! Review the battlefield, then begin Turn ${state.turn + 1}.`, 'success');
       updateUI();
+      if (NET.pendingNext) { NET.pendingNext = false; beginNextTurn(); }
     }
 
     function beginNextTurn() {
       if (state.phase !== 'POST_RESOLUTION') return;
+      if (netActive()) {
+        state.turn++;
+        state.activePlayer = NET.role;
+        state.phase = 'PLANNING';
+        document.getElementById('resolution-banner').classList.add('hidden');
+        document.getElementById('btn-next-turn').classList.add('hidden');
+        showToast(`Turn ${state.turn} — plan your secret orders.`, 'info');
+        updateUI();
+        return;
+      }
       state.turn++;
       state.activePlayer = 1;
       state.phase = 'PLANNING';
@@ -2616,11 +2876,21 @@
       if (mx < 0 || mx > MAP_W || my < 0 || my > MAP_H) return;
 
       if (state.phase === 'SETUP') {
+        if (netActive()) {
+          if (getSetupPlayer() !== NET.role) {
+            showToast("Waiting for your opponent's deployment…", 'info');
+            return;
+          }
+          const before = state.setupStep;
+          handleSetupClick(mx, my);
+          if (state.setupStep !== before) netSend({ t: 'setup', x: mx, y: my });
+          return;
+        }
         handleSetupClick(mx, my);
         return;
       }
 
-      if (state.phase !== 'PLANNING') {
+      if (state.phase !== 'PLANNING' || (netActive() && NET.locked[NET.role])) {
         const clicked = findEntityAt(mx, my);
         state.selectedId = clicked ? clicked.id : null;
         updateUI();
@@ -2742,6 +3012,7 @@
 
     // --- UI RENDERING ---
     function updateUI() {
+      if (netActive() && state.phase !== 'SETUP') state.activePlayer = NET.role;
       const p = state.activePlayer;
       const remAP = getRemainingAP(p);
       const queuedAP = getQueuedAP(p);
@@ -2782,8 +3053,10 @@
       document.getElementById('btn-launch-missile').disabled = state.phase !== 'PLANNING' || remAP < 1 || availM < 1;
 
       const lockBtn = document.getElementById('btn-lock-orders');
-      lockBtn.disabled = state.phase !== 'PLANNING';
-      lockBtn.textContent = p === 1 ? 'Lock P1 Orders 🔒' : 'Lock P2 & Resolve ⚡';
+      lockBtn.disabled = state.phase !== 'PLANNING' || (netActive() && NET.locked[NET.role]);
+      lockBtn.textContent = netActive()
+        ? (NET.locked[NET.role] ? 'Locked — waiting… ⏳' : 'Lock Orders 🔒')
+        : (p === 1 ? 'Lock P1 Orders 🔒' : 'Lock P2 & Resolve ⚡');
 
       if (state.phase === 'SETUP') {
         const sp = getSetupPlayer();
@@ -3521,6 +3794,9 @@
       state.selectedId = null;
       state.mode = 'IDLE';
       state.effects = [];
+      NET.locked = { 1: false, 2: false };
+      NET.peerOrders = [];
+      NET.pendingNext = false;
       state.stats = { kills: { 1: 0, 2: 0 }, missilesFired: { 1: 0, 2: 0 } };
       document.getElementById('victory-modal').classList.add('hidden');
       document.getElementById('resolution-banner').classList.add('hidden');
@@ -3539,6 +3815,10 @@
     const mapPasteTextarea = document.getElementById('map-paste-textarea');
 
     function openMapModal() {
+      if (netActive() && NET.role === 2) {
+        showToast('Only the host can change the map.', 'warn');
+        return;
+      }
       mapModal.classList.remove('hidden');
       SFX.play('click');
     }
@@ -3552,7 +3832,9 @@
       const reader = new FileReader();
       reader.onload = () => {
         try {
-          const parsed = parseAnyMapText(String(reader.result || ''), file.name);
+          const text = String(reader.result || '');
+          const parsed = parseAnyMapText(text, file.name);
+          lastMapSrc = { text, name: file.name, kind: 'any' };
           applyCustomMap(parsed);
           closeMapModal();
           SFX.play('lock');
@@ -3603,6 +3885,7 @@
     document.getElementById('btn-load-pasted-map').addEventListener('click', () => {
       try {
         const parsed = parseAnyMapText(mapPasteTextarea.value, 'pasted-map.txt');
+        lastMapSrc = { text: mapPasteTextarea.value, name: 'pasted-map.txt', kind: 'any' };
         applyCustomMap(parsed);
         closeMapModal();
         SFX.play('lock');
@@ -3617,6 +3900,7 @@
       try {
         const nycTxt = generateSampleNYCConvertedTxt();
         const parsed = parseCompactTxtMap(nycTxt, 'nyc-manhattan-sample.3mf');
+        lastMapSrc = { text: nycTxt, name: 'nyc-manhattan-sample.3mf', kind: 'compact' };
         applyCustomMap(parsed);
         closeMapModal();
         SFX.play('lock');
@@ -3725,13 +4009,31 @@
       state.isPanning = false;
     });
 
-    document.getElementById('btn-auto-deploy').addEventListener('click', autoDeploySetup);
+    document.getElementById('btn-auto-deploy').addEventListener('click', () => {
+      if (netActive()) {
+        if (state.phase !== 'SETUP') return;
+        if (NET.role !== 1) { showToast('Only the host can auto-deploy.', 'warn'); return; }
+        netSend({ t: 'autodeploy' });
+      }
+      autoDeploySetup();
+    });
     document.getElementById('btn-lock-orders').addEventListener('click', lockActivePlayerOrders);
-    document.getElementById('btn-next-turn').addEventListener('click', beginNextTurn);
+    document.getElementById('btn-next-turn').addEventListener('click', () => {
+      if (netActive() && state.phase === 'POST_RESOLUTION') netSend({ t: 'next' });
+      beginNextTurn();
+    });
+    document.getElementById('btn-open-net').addEventListener('click', () => document.getElementById('net-modal').classList.remove('hidden'));
+    document.getElementById('btn-close-net').addEventListener('click', () => document.getElementById('net-modal').classList.add('hidden'));
+    document.getElementById('btn-net-host').addEventListener('click', netHost);
+    document.getElementById('btn-net-join').addEventListener('click', () => netJoin(document.getElementById('net-code-input').value));
+    document.getElementById('btn-net-disconnect').addEventListener('click', netDisconnect);
     document.getElementById('btn-undo-order').addEventListener('click', undoLastOrder);
     document.getElementById('btn-clear-orders').addEventListener('click', clearAllOrders);
     document.getElementById('btn-cancel-mode').addEventListener('click', () => setMode('IDLE'));
-    document.getElementById('btn-play-again').addEventListener('click', () => resetCampaign(true));
+    document.getElementById('btn-play-again').addEventListener('click', () => {
+      netSend({ t: 'reset' });
+      resetCampaign(true);
+    });
     document.getElementById('btn-clear-log').addEventListener('click', () => {
       document.getElementById('combat-log').innerHTML = '';
     });
