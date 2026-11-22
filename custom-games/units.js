@@ -26,12 +26,12 @@ const UNIT_DEFS = {
   heavy_veh: {
     name: 'Heavy Vehicle', shape: 'Big Bead', category: 'land',
     speed: 2, hp: 8, atk: 5, range: 1, prodCooldown: 3,
-    notes: 'Heavy armor. Immune to standard Infantry auto-engagements.'
+    notes: 'Heavy armor. Immune to standard Infantry engagements.'
   },
   air_def: {
     name: 'Air Defense', shape: 'Beehive', category: 'land',
     speed: 2, hp: 4, atk: 4, range: 3, prodCooldown: 2,
-    notes: 'Auto-engages Planes (3") & intercepts Missiles (D4 within 3").'
+    notes: 'Engages Planes on command (3") & intercepts Missiles (D4 within 3").'
   },
   plane: {
     name: 'Plane', shape: 'Small Heart', category: 'air',
@@ -41,7 +41,7 @@ const UNIT_DEFS = {
   ship: {
     name: 'Ship', shape: 'Small Star', category: 'sea',
     speed: 3, hp: 6, atk: 4, range: 3, prodCooldown: 4,
-    notes: 'Water only. Auto-engages land and sea targets within 3".'
+    notes: 'Water only. Engages land and sea targets within 3" on command.'
   }
 };
 

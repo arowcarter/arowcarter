@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Tactical Map War Game v2.1 — WEGO, Auto-Engagement &amp; Custom Maps</title>
+  <title>Tactical Map War Game v2.1 — WEGO, Engagement &amp; Custom Maps</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
@@ -121,7 +121,7 @@
         </div>
         <div>
           <h1 class="text-sm sm:text-base font-extrabold tracking-wider uppercase text-slate-100 leading-tight">Tactical Map War Game</h1>
-          <div id="hud-map-scale-sub" class="text-[10px] font-mono-tac text-sky-400 tracking-widest">v2.1 • 4× SCALE WEGO, AUTO-ENGAGE &amp; MULTI-ACTION (68"×44")</div>
+          <div id="hud-map-scale-sub" class="text-[10px] font-mono-tac text-sky-400 tracking-widest">v2.1 • 4× SCALE WEGO, ORDERED ENGAGE &amp; MULTI-ACTION (68"×44")</div>
         </div>
       </div>
 
@@ -181,7 +181,7 @@
       <button id="btn-toggle-zones" class="tac-btn px-2 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-emerald-300 text-xs font-semibold" title="Toggle 3-inch Established Zones">
         Zones: ON
       </button>
-      <button id="btn-toggle-ranges" class="tac-btn px-2 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-rose-300 text-xs font-semibold" title="Toggle Automatic Engagement Radii">
+      <button id="btn-toggle-ranges" class="tac-btn px-2 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-rose-300 text-xs font-semibold" title="Toggle Engagement Radii">
         Engage: ON
       </button>
       <button id="btn-toggle-sound" class="tac-btn px-2 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold" title="Toggle Tactical Audio">
@@ -219,16 +219,20 @@
       <div id="res-steps" class="flex items-center gap-1.5 font-mono-tac text-[11px] flex-wrap">
         <span data-step="1" class="px-2 py-0.5 rounded bg-slate-800 text-slate-400">1. Move &amp; Resupply</span>
         <span class="text-slate-600">→</span>
-        <span data-step="2" class="px-2 py-0.5 rounded bg-slate-800 text-slate-400">2. Auto-Engage</span>
+        <span data-step="2" class="px-2 py-0.5 rounded bg-slate-800 text-slate-400">2. Engage</span>
         <span class="text-slate-600">→</span>
         <span data-step="3" class="px-2 py-0.5 rounded bg-slate-800 text-slate-400">3. Missiles</span>
         <span class="text-slate-600">→</span>
         <span data-step="4" class="px-2 py-0.5 rounded bg-slate-800 text-slate-400">4. Logistics</span>
       </div>
     </div>
-    <button id="btn-next-turn" class="hidden tac-btn px-3.5 py-1 rounded-lg bg-gradient-to-b from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 text-white font-extrabold text-xs uppercase tracking-wider">
-      Begin Next Turn (Pass to P1) ▶
-    </button>
+    <div class="flex items-center gap-2">
+      <button id="btn-review-player" class="hidden tac-btn px-3 py-1 rounded-lg bg-slate-700 hover:bg-slate-600 text-white font-bold text-xs"></button>
+      <button id="btn-victory-result" class="hidden tac-btn px-3 py-1 rounded-lg bg-amber-700 hover:bg-amber-600 text-white font-bold text-xs">Victory Results</button>
+      <button id="btn-next-turn" class="hidden tac-btn px-3.5 py-1 rounded-lg bg-gradient-to-b from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 text-white font-extrabold text-xs uppercase tracking-wider">
+        Begin Next Turn (Pass to P1) ▶
+      </button>
+    </div>
   </div>
 
   <!-- MAIN WORKSPACE -->
@@ -431,7 +435,7 @@
       <div class="px-5 py-3.5 bg-slate-900 border-b border-slate-700 flex items-center justify-between">
         <div>
           <h3 class="text-base font-extrabold text-slate-100 tracking-wide uppercase">Production &amp; Logistics Manual (v2.1)</h3>
-          <p class="text-xs font-mono-tac text-sky-400">WEGO Simultaneous Turns, Auto-Engagement, Multi-Action &amp; Custom Maps</p>
+          <p class="text-xs font-mono-tac text-sky-400">WEGO Simultaneous Turns, Ordered Engagement, Multi-Action &amp; Custom Maps</p>
         </div>
         <button id="btn-close-rules" class="tac-btn px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold">✕ CLOSE</button>
       </div>
@@ -443,7 +447,8 @@
               <li>• <strong>Planning Phase:</strong> P1 queues secret orders (4 AP), passes device via privacy screen, then P2 queues secret orders (4 AP).</li>
               <li>• <strong>Multi-Action Chained Movement:</strong> Any unit may chain multiple <strong>1 AP</strong> move legs in a single turn (up to 4 AP). Road bonus (+1" Land) applies per leg.</li>
               <li>• <strong>Step 1 — Movement &amp; Resupply:</strong> All units animate leg-by-leg simultaneously. Spent units touching or passing a friendly Base/Resupply Hub (0.62") along any leg reload immediately!</li>
-              <li>• <strong>Step 2 — Automatic Engagement (0 AP):</strong> All Loaded units automatically fire at the closest valid enemy in range. Mutual kills possible. Firing makes a unit <strong>SPENT</strong>.</li>
+              <li>• <strong>Step 2 — Ordered Engagement (0 AP):</strong> Loaded units ordered to engage fire at the closest valid enemy in range after movement. A loaded unit attacked without an order returns fire if it can attack an enemy targeting it. Units fire once; mutual kills are possible. Firing makes a unit <strong>SPENT</strong>.</li>
+              <li>• <strong>Fog of war:</strong> Enemy units are visible only within a friendly unit's engagement range or 3" of a friendly structure. Structures remain visible. Hot-seat players can review the resolved turn from either perspective.</li>
               <li>• <strong>Step 3 — Missiles:</strong> Missiles (Atk 8) strike; Air Defense within 3" intercepts with D4.</li>
               <li>• <strong>Step 4 — Logistics:</strong> Idle Resupply ticks (2 turns), production spawns, 4 AP construction/repairs complete, and +1 Missile restocks every 5 turns.</li>
             </ul>
@@ -454,14 +459,14 @@
               <li>• <strong>4× Battlefield Scale (68"×44"):</strong> Default map is 68"×44" and custom maps scale to a 68" longest edge. Outskirts deployment zone is <strong>6.0"</strong>. Unit speeds (1"–4") and engagement ranges (1"–3") remain at original inch values.</li>
               <li>• <strong>Impassable Buildings (B):</strong> Land units cannot move onto or cut through Building (<code>B</code>) tiles, and structures cannot be built on them. Route around city blocks via Ground (<code>G</code>) and Road (<code>R</code>) corridors. Planes fly freely over buildings.</li>
               <li>• <strong>Pan &amp; Zoom (1×–8×):</strong> Scroll wheel zooms centered on cursor; hold <strong>Space+Drag</strong>, Middle-Click, or toggle <strong>✋ Pan</strong> to navigate.</li>
-              <li>• <strong>Automatic Engagement:</strong> <strong>0 AP</strong> (Automatic in Step 2). <strong>Move / Missile:</strong> 1 AP. <strong>Produce:</strong> 2 AP. <strong>Construct / Hub / Repair:</strong> 4 AP.</li>
+              <li>• <strong>Engage order:</strong> <strong>0 AP</strong>. <strong>Move / Missile:</strong> 1 AP. <strong>Produce:</strong> 2 AP. <strong>Construct / Hub / Repair:</strong> 4 AP.</li>
               <li>• <strong>Victory:</strong> Destroy both enemy Original Main Bases simultaneously.</li>
             </ul>
           </div>
         </div>
 
         <div class="bg-slate-900/70 border border-slate-700/70 rounded-xl p-3 overflow-x-auto">
-          <h4 class="font-bold text-sky-400 uppercase text-xs mb-2">Units &amp; Automatic Engagement Reference</h4>
+          <h4 class="font-bold text-sky-400 uppercase text-xs mb-2">Units &amp; Engagement Reference</h4>
           <table class="w-full text-left text-xs font-mono-tac border-collapse">
             <thead>
               <tr class="border-b border-slate-700 text-slate-400">
@@ -480,9 +485,9 @@
               <tr><td class="py-1 pr-2 text-slate-100">SpecOps</td><td class="px-2">Egg</td><td class="px-2">2"</td><td class="px-2">4</td><td class="px-2">3</td><td class="px-2">1"</td><td class="px-2">3t</td><td class="pl-2 text-slate-400">Hits all land &amp; bases; repairs general ruins</td></tr>
               <tr><td class="py-1 pr-2 text-slate-100">Light Veh</td><td class="px-2">Small Bead</td><td class="px-2">3"</td><td class="px-2">6</td><td class="px-2">4</td><td class="px-2">1"</td><td class="px-2">2t</td><td class="pl-2 text-slate-400">Fast all-purpose land unit</td></tr>
               <tr><td class="py-1 pr-2 text-slate-100">Heavy Veh</td><td class="px-2">Big Bead</td><td class="px-2">2"</td><td class="px-2">8</td><td class="px-2">5</td><td class="px-2">1"</td><td class="px-2">3t</td><td class="pl-2 text-slate-400">Heavy armor; immune to standard Infantry</td></tr>
-              <tr><td class="py-1 pr-2 text-slate-100">Air Defense</td><td class="px-2">Beehive</td><td class="px-2">2"</td><td class="px-2">4</td><td class="px-2">4</td><td class="px-2">3"</td><td class="px-2">2t</td><td class="pl-2 text-slate-400">Auto-engages Planes &amp; intercepts Missiles (D4)</td></tr>
+              <tr><td class="py-1 pr-2 text-slate-100">Air Defense</td><td class="px-2">Beehive</td><td class="px-2">2"</td><td class="px-2">4</td><td class="px-2">4</td><td class="px-2">3"</td><td class="px-2">2t</td><td class="pl-2 text-slate-400">Engages Planes on command &amp; intercepts Missiles (D4)</td></tr>
               <tr><td class="py-1 pr-2 text-slate-100">Plane</td><td class="px-2">Small Heart</td><td class="px-2">4"</td><td class="px-2">6</td><td class="px-2">5</td><td class="px-2">3"</td><td class="px-2">4t</td><td class="pl-2 text-slate-400">Immune to land except Air Defense</td></tr>
-              <tr><td class="py-1 pr-2 text-slate-100">Ship</td><td class="px-2">Small Star</td><td class="px-2">3"</td><td class="px-2">6</td><td class="px-2">4</td><td class="px-2">3"</td><td class="px-2">4t</td><td class="pl-2 text-slate-400">Water only; auto-engages land &amp; water in 3"</td></tr>
+              <tr><td class="py-1 pr-2 text-slate-100">Ship</td><td class="px-2">Small Star</td><td class="px-2">3"</td><td class="px-2">6</td><td class="px-2">4</td><td class="px-2">3"</td><td class="px-2">4t</td><td class="pl-2 text-slate-400">Water only; engages land &amp; water in 3"</td></tr>
             </tbody>
           </table>
           <p class="text-[11px] text-amber-300 mt-2">Road Bonus: Land units starting on or moving along a marked highway or custom Road (R) receive +1" speed per leg.</p>
@@ -498,6 +503,7 @@
       <h2 id="victory-title" class="text-2xl font-extrabold uppercase tracking-wider text-amber-300 mb-2">VICTORY!</h2>
       <p id="victory-subtitle" class="text-sm text-slate-300 mb-5">Both enemy Original Main Bases have been neutralized.</p>
       <div id="victory-stats" class="bg-slate-900/90 border border-slate-700 rounded-xl p-3 mb-5 text-xs font-mono-tac text-slate-300 space-y-1"></div>
+      <button id="btn-review-battlefield" class="tac-btn w-full py-2 mb-2 rounded-xl bg-slate-700 hover:bg-slate-600 text-white font-bold text-sm">Review Battlefield</button>
       <button id="btn-play-again" class="tac-btn w-full py-2.5 rounded-xl bg-gradient-to-b from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-extrabold uppercase tracking-wider">
         Start New Campaign
       </button>
@@ -684,7 +690,7 @@
       locked: { 1: false, 2: false },
       peerOrders: [],
       pendingSync: null, syncResolve: null,
-      pendingNext: false,
+      nextReady: { 1: false, 2: false },
       applyingRemote: false
     };
     let lastMapSrc = null; // {text, name, kind:'any'|'compact'} or null for the default map
@@ -801,8 +807,10 @@
           if (NET.syncResolve) { const r = NET.syncResolve; NET.syncResolve = null; r(); }
           break;
         case 'next':
-          if (state.phase === 'POST_RESOLUTION') beginNextTurn();
-          else NET.pendingNext = true;
+          if (msg.turn !== state.turn) break;
+          NET.nextReady[netPeerRole()] = true;
+          if (state.phase === 'POST_RESOLUTION' && NET.nextReady[NET.role]) beginNextTurn();
+          else updateUI();
           break;
         case 'reset':
           resetCampaign(true);
@@ -1511,7 +1519,7 @@
       MAP_W = 68;
       MAP_H = 44;
       document.getElementById('hud-map-scale-sub').textContent =
-        'v2.1 • 4× SCALE WEGO, AUTO-ENGAGE & MULTI-ACTION (68"×44")';
+        'v2.1 • 4× SCALE WEGO, ORDERED ENGAGE & MULTI-ACTION (68"×44")';
       document.getElementById('tel-map-name').textContent = 'Default 68"×44"';
       document.getElementById('tel-elev-wrap').classList.add('hidden');
       document.getElementById('btn-toggle-pins').classList.add('hidden');
@@ -1791,7 +1799,7 @@
 
     function toggleEngageOrder(unit) {
       const p = state.activePlayer;
-      if (state.phase !== 'PLANNING' || unit.owner !== p || unit.ammoSpent) return;
+      if (state.phase !== 'PLANNING' || unit.owner !== p || unit.ammoSpent || (netActive() && NET.locked[p])) return;
       const list = state.orders[p];
       const idx = list.findIndex(o => o.type === 'ENGAGE' && o.unitId === unit.id);
       if (idx >= 0) {
@@ -1810,10 +1818,10 @@
       updateUI();
     }
 
-    // Viewer whose perspective hides enemy units; null shows everything (hot-seat outside planning).
+    // Hot-seat resolution starts from the last planning player's perspective.
     function fogViewer() {
       if (netActive()) return NET.role;
-      return state.phase === 'PLANNING' ? state.activePlayer : null;
+      return state.phase === 'SETUP' ? null : state.activePlayer;
     }
 
     // Enemy units are revealed only inside a friendly unit's engagement range (or a friendly base zone).
@@ -1839,7 +1847,14 @@
       container.appendChild(div);
     }
 
-    function addLog(msg, tone = 'slate') {
+    function addLog(msg, tone = 'slate', entities = []) {
+      const viewer = fogViewer();
+      const privateEntry = viewer !== null && entities.some(e => e.kind === 'unit');
+      const viewers = privateEntry
+        ? (netActive() || state.phase !== 'RESOLVING' ? [viewer] : [1, 2])
+            .filter(p => entities.every(e => isEntityVisible(e, p)))
+        : [];
+      if (privateEntry && viewers.length === 0) return;
       const logEl = document.getElementById('combat-log');
       const colors = {
         slate: 'text-slate-300 border-slate-700/60 bg-slate-900/60',
@@ -1851,6 +1866,10 @@
       };
       const entry = document.createElement('div');
       entry.className = `px-2 py-1.5 rounded-lg border leading-snug ${colors[tone] || colors.slate}`;
+      if (privateEntry) {
+        entry.dataset.viewers = viewers.join(',');
+        entry.hidden = !viewers.includes(viewer);
+      }
       entry.innerHTML = `<span class="text-slate-500 mr-1">[T${state.turn}]</span>${msg}`;
       logEl.prepend(entry);
     }
@@ -2372,8 +2391,10 @@
       });
     }
 
-    function addEffect(fx) {
-      state.effects.push({ ...fx, createdAt: performance.now() });
+    function addEffect(fx, entities = []) {
+      const viewer = fogViewer();
+      if (entities.some(e => !isEntityVisible(e, viewer))) return;
+      state.effects.push({ ...fx, viewer: entities.some(e => e.kind === 'unit') ? viewer : null, createdAt: performance.now() });
     }
 
     function checkContactResupplyForUnit(unit, x, y) {
@@ -2387,8 +2408,8 @@
       if (touched) {
         unit.ammoSpent = false;
         unit.idleResupplyTurns = 0;
-        addEffect({ type: 'text', x, y: y - 0.35, text: 'RELOADED!', color: '#34d399', duration: 1500 });
-        addLog(`🔋 <strong>${pName(unit.owner)} ${UNIT_DEFS[unit.type].name}</strong> reloaded on contact with friendly Base/Hub!`, 'emerald');
+        addEffect({ type: 'text', x, y: y - 0.35, text: 'RELOADED!', color: '#34d399', duration: 1500 }, [unit]);
+        addLog(`🔋 <strong>${pName(unit.owner)} ${UNIT_DEFS[unit.type].name}</strong> reloaded on contact with friendly Base/Hub!`, 'emerald', [unit]);
         return true;
       }
       return false;
@@ -2501,12 +2522,18 @@
       }
       await sleep(350);
 
-      // STEP 2: ORDERED ENGAGEMENT (units with an ENGAGE order only; SIMULTANEOUS, MUTUAL KILLS)
+      // STEP 2: ORDERED ENGAGEMENT AND RETURN FIRE (SIMULTANEOUS, MUTUAL KILLS)
       highlightResStep(2);
       const targetAttackers = new Map();
+      const assignedAttackers = new Set();
       const engageIds = new Set();
       for (const p of [1, 2]) {
-        for (const o of state.orders[p]) if (o.type === 'ENGAGE') engageIds.add(o.unitId);
+        for (const o of state.orders[p]) {
+          if (o.type === 'ENGAGE') {
+            const unit = getEntityById(o.unitId);
+            if (unit && unit.kind === 'unit' && unit.owner === p) engageIds.add(o.unitId);
+          }
+        }
       }
 
       for (const unit of state.entities) {
@@ -2524,6 +2551,26 @@
         const chosen = candidates[0];
         if (!targetAttackers.has(chosen.id)) targetAttackers.set(chosen.id, []);
         targetAttackers.get(chosen.id).push(unit);
+        assignedAttackers.add(unit.id);
+      }
+
+      // Each defender without an attack may return fire against one eligible attacker.
+      for (const [targetId, attackers] of Array.from(targetAttackers.entries())) {
+        const defender = getEntityById(targetId);
+        if (!defender || defender.kind !== 'unit' || defender.ammoSpent || assignedAttackers.has(defender.id)) continue;
+        const eligible = attackers.filter(a => canAutoEngage(defender, a));
+        eligible.sort((a, b) => {
+          const da = distIn(defender.x, defender.y, a.x, a.y);
+          const db = distIn(defender.x, defender.y, b.x, b.y);
+          if (Math.abs(da - db) > 0.02) return da - db;
+          return a.hp - b.hp;
+        });
+        if (eligible.length > 0) {
+          const target = eligible[0];
+          if (!targetAttackers.has(target.id)) targetAttackers.set(target.id, []);
+          targetAttackers.get(target.id).push(defender);
+          assignedAttackers.add(defender.id);
+        }
       }
 
       const destroyedInStep2 = new Set();
@@ -2545,7 +2592,7 @@
               type: 'beam',
               x1: a.x, y1: a.y, x2: target.x, y2: target.y,
               color: pColor(a.owner), duration: 1100
-            });
+            }, [a, target]);
           }
 
           const tName = target.kind === 'unit' ? UNIT_DEFS[target.type].name : STRUCTURE_DEFS[target.type].name;
@@ -2554,12 +2601,12 @@
           if (hit) {
             destroyedInStep2.add(target.id);
             state.stats.kills[attackers[0].owner]++;
-            addEffect({ type: 'boom', x: target.x, y: target.y, color: '#f97316', duration: 950 });
-            addEffect({ type: 'text', x: target.x, y: target.y - 0.35, text: `💥 ${atkRoll} > ${defRoll}`, color: '#fb7185', duration: 1600 });
-            addLog(`💥 <strong>AUTO-ENGAGE:</strong> ${pName(attackers[0].owner)} [${aNames}] rolled <strong>${atkRoll}</strong> (d${combinedAtk}) vs ${pName(target.owner)} ${tName} <strong>${defRoll}</strong> (d${target.hp}) → <strong>DESTROYED!</strong>`, 'danger');
+            addEffect({ type: 'boom', x: target.x, y: target.y, color: '#f97316', duration: 950 }, [target]);
+            addEffect({ type: 'text', x: target.x, y: target.y - 0.35, text: `💥 ${atkRoll} > ${defRoll}`, color: '#fb7185', duration: 1600 }, [target]);
+            addLog(`💥 <strong>ENGAGE:</strong> ${pName(attackers[0].owner)} [${aNames}] rolled <strong>${atkRoll}</strong> (d${combinedAtk}) vs ${pName(target.owner)} ${tName} <strong>${defRoll}</strong> (d${target.hp}) → <strong>DESTROYED!</strong>`, 'danger', [...attackers, target]);
           } else {
-            addEffect({ type: 'text', x: target.x, y: target.y - 0.35, text: `🛡️ ${atkRoll} ≤ ${defRoll}`, color: '#94a3b8', duration: 1500 });
-            addLog(`🛡️ <strong>AUTO-ENGAGE:</strong> ${pName(attackers[0].owner)} [${aNames}] rolled <strong>${atkRoll}</strong> (d${combinedAtk}) vs ${pName(target.owner)} ${tName} <strong>${defRoll}</strong> (d${target.hp}) → <strong>DEFLECTED</strong>.`, 'slate');
+            addEffect({ type: 'text', x: target.x, y: target.y - 0.35, text: `🛡️ ${atkRoll} ≤ ${defRoll}`, color: '#94a3b8', duration: 1500 }, [target]);
+            addLog(`🛡️ <strong>ENGAGE:</strong> ${pName(attackers[0].owner)} [${aNames}] rolled <strong>${atkRoll}</strong> (d${combinedAtk}) vs ${pName(target.owner)} ${tName} <strong>${defRoll}</strong> (d${target.hp}) → <strong>DEFLECTED</strong>.`, 'slate', [...attackers, target]);
           }
         }
 
@@ -2616,7 +2663,7 @@
             addEffect({
               type: 'beam', x1: interceptors[0].x, y1: interceptors[0].y,
               x2: target.x, y2: target.y, color: '#34d399', duration: 1000
-            });
+            }, [interceptors[0], target]);
             if (adRoll > missileRoll) {
               intercepted = true;
               interceptText = ` (Air Def D4=${adRoll} > ${missileRoll} — INTERCEPTED!)`;
@@ -2629,21 +2676,21 @@
           const tName = target.kind === 'unit' ? UNIT_DEFS[target.type].name : STRUCTURE_DEFS[target.type].name;
           if (intercepted) {
             SFX.play('miss');
-            addEffect({ type: 'text', x: target.x, y: target.y - 0.35, text: '🛡️ INTERCEPTED!', color: '#34d399', duration: 1500 });
-            addLog(`🚀 <strong>MISSILE:</strong> ${pName(m.owner)} fired at ${tName}${interceptText}`, 'emerald');
+            addEffect({ type: 'text', x: target.x, y: target.y - 0.35, text: '🛡️ INTERCEPTED!', color: '#34d399', duration: 1500 }, [target]);
+            addLog(`🚀 <strong>MISSILE:</strong> ${pName(m.owner)} fired at ${tName}${interceptText}`, 'emerald', [target, ...interceptors]);
           } else {
             const defRoll = rollDie(target.hp);
             if (missileRoll > defRoll) {
               destroyedByMissile.add(target.id);
               state.stats.kills[m.owner]++;
               SFX.play('explode');
-              addEffect({ type: 'boom', x: target.x, y: target.y, color: '#ef4444', duration: 1000 });
-              addEffect({ type: 'text', x: target.x, y: target.y - 0.35, text: `🚀 HIT ${missileRoll}>${defRoll}`, color: '#fb7185', duration: 1600 });
-              addLog(`🚀 <strong>MISSILE HIT:</strong> ${pName(m.owner)} struck ${pName(target.owner)} ${tName}${interceptText} vs Def <strong>${defRoll}</strong> (d${target.hp}) → <strong>DESTROYED!</strong>`, 'danger');
+              addEffect({ type: 'boom', x: target.x, y: target.y, color: '#ef4444', duration: 1000 }, [target]);
+              addEffect({ type: 'text', x: target.x, y: target.y - 0.35, text: `🚀 HIT ${missileRoll}>${defRoll}`, color: '#fb7185', duration: 1600 }, [target]);
+              addLog(`🚀 <strong>MISSILE HIT:</strong> ${pName(m.owner)} struck ${pName(target.owner)} ${tName}${interceptText} vs Def <strong>${defRoll}</strong> (d${target.hp}) → <strong>DESTROYED!</strong>`, 'danger', [target, ...interceptors]);
             } else {
               SFX.play('miss');
-              addEffect({ type: 'text', x: target.x, y: target.y - 0.35, text: `🚀 MISS ${missileRoll}≤${defRoll}`, color: '#fbbf24', duration: 1500 });
-              addLog(`🚀 <strong>MISSILE:</strong> ${pName(m.owner)} struck ${pName(target.owner)} ${tName}${interceptText} vs Def <strong>${defRoll}</strong> (d${target.hp}) → <strong>SURVIVED</strong>.`, 'amber');
+              addEffect({ type: 'text', x: target.x, y: target.y - 0.35, text: `🚀 MISS ${missileRoll}≤${defRoll}`, color: '#fbbf24', duration: 1500 }, [target]);
+              addLog(`🚀 <strong>MISSILE:</strong> ${pName(m.owner)} struck ${pName(target.owner)} ${tName}${interceptText} vs Def <strong>${defRoll}</strong> (d${target.hp}) → <strong>SURVIVED</strong>.`, 'amber', [target, ...interceptors]);
             }
           }
         }
@@ -2677,8 +2724,8 @@
             if (e.idleResupplyTurns >= 2) {
               e.ammoSpent = false;
               e.idleResupplyTurns = 0;
-              addEffect({ type: 'text', x: e.x, y: e.y - 0.35, text: 'IDLE RELOAD', color: '#34d399', duration: 1300 });
-              addLog(`🔋 ${pName(e.owner)} ${UNIT_DEFS[e.type].name} completed 2-turn Idle Resupply.`, 'emerald');
+              addEffect({ type: 'text', x: e.x, y: e.y - 0.35, text: 'IDLE RELOAD', color: '#34d399', duration: 1300 }, [e]);
+              addLog(`🔋 ${pName(e.owner)} ${UNIT_DEFS[e.type].name} completed 2-turn Idle Resupply.`, 'emerald', [e]);
             }
           }
           e.secured = !movedUnitIds.has(e.id);
@@ -2698,15 +2745,15 @@
               continue;
             }
             const pt = findSpawnPointNear(base, o.unitType);
-            spawnUnit(p, o.unitType, pt.x, pt.y);
+            const produced = spawnUnit(p, o.unitType, pt.x, pt.y);
             base.cooldown = UNIT_DEFS[o.unitType].prodCooldown;
-            addLog(`🏭 <strong>${pName(p)}</strong> produced <strong>${UNIT_DEFS[o.unitType].name}</strong> at ${STRUCTURE_DEFS[base.type].name}.`, p === 1 ? 'p1' : 'p2');
+            addLog(`🏭 <strong>${pName(p)}</strong> produced <strong>${UNIT_DEFS[o.unitType].name}</strong> at ${STRUCTURE_DEFS[base.type].name}.`, p === 1 ? 'p1' : 'p2', [produced]);
           } else if (o.type === 'DEPLOY_AD') {
             const base = getEntityById(o.baseId);
             if (!base) continue;
-            spawnUnit(p, 'air_def', o.x, o.y);
+            const deployed = spawnUnit(p, 'air_def', o.x, o.y);
             base.cooldown = UNIT_DEFS.air_def.prodCooldown;
-            addLog(`🛡️ <strong>${pName(p)}</strong> deployed <strong>Air Defense</strong> in 3" Established Zone.`, p === 1 ? 'p1' : 'p2');
+            addLog(`🛡️ <strong>${pName(p)}</strong> deployed <strong>Air Defense</strong> in 3" Established Zone.`, p === 1 ? 'p1' : 'p2', [deployed]);
           } else if (o.type === 'CONSTRUCT') {
             const unit = getEntityById(o.unitId);
             if (!unit) {
@@ -2763,12 +2810,14 @@
       document.getElementById('btn-next-turn').classList.remove('hidden');
       showToast(`Turn ${state.turn} Resolved! Review the battlefield, then begin Turn ${state.turn + 1}.`, 'success');
       updateUI();
-      if (NET.pendingNext) { NET.pendingNext = false; beginNextTurn(); }
+      if (netActive() && NET.nextReady[1] && NET.nextReady[2]) beginNextTurn();
     }
 
     function beginNextTurn() {
       if (state.phase !== 'POST_RESOLUTION') return;
       if (netActive()) {
+        if (!NET.nextReady[1] || !NET.nextReady[2]) return;
+        NET.nextReady = { 1: false, 2: false };
         state.turn++;
         state.activePlayer = NET.role;
         state.phase = 'PLANNING';
@@ -2997,6 +3046,18 @@
       const p = state.activePlayer;
       const remAP = getRemainingAP(p);
       const queuedAP = getQueuedAP(p);
+      document.querySelectorAll('#combat-log [data-viewers]').forEach(entry => {
+        entry.hidden = !entry.dataset.viewers.split(',').includes(String(fogViewer()));
+      });
+      const reviewBtn = document.getElementById('btn-review-player');
+      reviewBtn.classList.toggle('hidden', netActive() || (state.phase !== 'POST_RESOLUTION' && state.phase !== 'GAMEOVER'));
+      reviewBtn.textContent = `Pass to ${pName(p === 1 ? 2 : 1)} to Review`;
+      document.getElementById('btn-victory-result').classList.toggle('hidden', state.phase !== 'GAMEOVER');
+      const nextBtn = document.getElementById('btn-next-turn');
+      nextBtn.disabled = netActive() && NET.nextReady[NET.role];
+      nextBtn.textContent = netActive()
+        ? (NET.nextReady[NET.role] ? 'Waiting for opponent…' : 'Ready for Next Turn ▶')
+        : 'Begin Next Turn (Pass to P1) ▶';
 
       const pill = document.getElementById('hud-player-pill');
       const dot = document.getElementById('hud-player-dot');
@@ -3141,7 +3202,7 @@
               <button id="act-move-leg" ${canMove ? '' : 'disabled'} class="tac-btn w-full py-1.5 rounded-lg bg-sky-700 hover:bg-sky-600 text-white font-bold text-xs">
                 🧭 ${legs > 0 ? `Chain Move Leg #${legs + 1}` : 'Plot Move Path'} (1 AP)
               </button>
-              <button id="act-engage" ${ent.ammoSpent ? 'disabled' : ''} class="tac-btn w-full py-1.5 rounded-lg ${hasEngageOrder(ent.id, p) ? 'bg-rose-600 hover:bg-rose-500' : 'bg-slate-700 hover:bg-slate-600'} text-white font-bold text-xs">
+              <button id="act-engage" ${ent.ammoSpent || (netActive() && NET.locked[p]) ? 'disabled' : ''} class="tac-btn w-full py-1.5 rounded-lg ${hasEngageOrder(ent.id, p) ? 'bg-rose-600 hover:bg-rose-500' : 'bg-slate-700 hover:bg-slate-600'} text-white font-bold text-xs">
                 ${hasEngageOrder(ent.id, p) ? '🎯 ENGAGING — click to cancel' : `🎯 Order Engage (${ENGAGE_AP_COST} AP)`}
               </button>
               ${ent.type === 'infantry' ? `
@@ -3529,7 +3590,7 @@
         ctx.restore();
       }
 
-      // 5. Toggleable Automatic Engagement Radii (Loaded units only)
+      // 5. Toggleable Engagement Radii (Loaded units only)
       if (state.showRanges) {
         ctx.save();
         for (const e of state.entities) {
@@ -3742,6 +3803,7 @@
       // 10. Visual Combat & Resupply Effects
       state.effects = state.effects.filter(fx => now - fx.createdAt < fx.duration);
       for (const fx of state.effects) {
+        if (fx.viewer !== null && fx.viewer !== fogViewer()) continue;
         const p = (now - fx.createdAt) / fx.duration;
         ctx.save();
         ctx.globalAlpha = Math.max(0, 1 - p);
@@ -3789,7 +3851,7 @@
       state.effects = [];
       NET.locked = { 1: false, 2: false };
       NET.peerOrders = [];
-      NET.pendingNext = false;
+      NET.nextReady = { 1: false, 2: false };
       state.stats = { kills: { 1: 0, 2: 0 }, missilesFired: { 1: 0, 2: 0 } };
       document.getElementById('victory-modal').classList.add('hidden');
       document.getElementById('resolution-banner').classList.add('hidden');
@@ -4011,8 +4073,37 @@
       autoDeploySetup();
     });
     document.getElementById('btn-lock-orders').addEventListener('click', lockActivePlayerOrders);
+    document.getElementById('btn-review-player').addEventListener('click', () => {
+      if (netActive() || (state.phase !== 'POST_RESOLUTION' && state.phase !== 'GAMEOVER')) return;
+      const nextPlayer = state.activePlayer === 1 ? 2 : 1;
+      const modal = document.getElementById('handoff-modal');
+      document.getElementById('handoff-title').textContent = 'Resolution Review';
+      document.getElementById('handoff-subtitle').textContent = `Pass the device to ${pName(nextPlayer)} to review their view of the turn.`;
+      const btn = document.getElementById('btn-handoff-ready');
+      btn.textContent = `${pName(nextPlayer)} Ready — Review`;
+      btn.className = nextPlayer === 1
+        ? 'tac-btn w-full py-3 rounded-xl bg-gradient-to-b from-sky-500 to-blue-700 hover:from-sky-400 hover:to-blue-600 text-white font-extrabold uppercase tracking-wider text-sm'
+        : 'tac-btn w-full py-3 rounded-xl bg-gradient-to-b from-rose-500 to-rose-700 hover:from-rose-400 hover:to-rose-600 text-white font-extrabold uppercase tracking-wider text-sm';
+      btn.onclick = () => {
+        state.activePlayer = nextPlayer;
+        state.selectedId = null;
+        modal.classList.add('hidden');
+        SFX.play('click');
+        updateUI();
+      };
+      modal.classList.remove('hidden');
+    });
     document.getElementById('btn-next-turn').addEventListener('click', () => {
-      if (netActive() && state.phase === 'POST_RESOLUTION') netSend({ t: 'next' });
+      if (state.phase !== 'POST_RESOLUTION') return;
+      if (netActive()) {
+        if (NET.nextReady[NET.role]) return;
+        NET.nextReady[NET.role] = true;
+        netSend({ t: 'next', turn: state.turn });
+        if (!NET.nextReady[netPeerRole()]) {
+          updateUI();
+          return;
+        }
+      }
       beginNextTurn();
     });
     document.getElementById('btn-open-net').addEventListener('click', () => document.getElementById('net-modal').classList.remove('hidden'));
@@ -4027,8 +4118,29 @@
       netSend({ t: 'reset' });
       resetCampaign(true);
     });
+    document.getElementById('btn-review-battlefield').addEventListener('click', () => {
+      document.getElementById('victory-modal').classList.add('hidden');
+    });
+    document.getElementById('btn-victory-result').addEventListener('click', () => {
+      document.getElementById('victory-modal').classList.remove('hidden');
+    });
     document.getElementById('btn-clear-log').addEventListener('click', () => {
-      document.getElementById('combat-log').innerHTML = '';
+      const log = document.getElementById('combat-log');
+      const viewer = fogViewer();
+      if (netActive() || viewer === null) {
+        log.innerHTML = '';
+        return;
+      }
+      const other = viewer === 1 ? '2' : '1';
+      for (const entry of Array.from(log.children)) {
+        const viewers = entry.dataset.viewers ? entry.dataset.viewers.split(',') : ['1', '2'];
+        if (viewers.includes(other)) {
+          entry.dataset.viewers = other;
+          entry.hidden = true;
+        } else {
+          entry.remove();
+        }
+      }
     });
 
     document.getElementById('btn-launch-missile').addEventListener('click', () => {
