@@ -713,7 +713,7 @@
       phase: 'SETUP', // 'SETUP' | 'PLANNING' | 'RESOLVING' | 'POST_RESOLUTION' | 'GAMEOVER'
       setupStep: 0,   // 0: P1 Base 1, 1: P2 Base 1, 2: P1 Base 2, 3: P2 Base 2
       turn: 1,
-      activePlayer: 1,
+      _ap: 1,
       missiles: { 1: 6, 2: 6 },
       orders: { 1: [], 2: [] },
       entities: [],
@@ -758,6 +758,11 @@
     let rngState = 1;
 
     function netActive() { return !!(NET.conn && NET.conn.open); }
+    // Online, the acting player is always the local role (except during alternating setup placement).
+    Object.defineProperty(state, 'activePlayer', {
+      get() { return netActive() && this.phase !== 'SETUP' ? NET.role : this._ap; },
+      set(v) { this._ap = v; }
+    });
     function netSend(msg) { if (netActive()) NET.conn.send(msg); }
     function netPeerRole() { return NET.role === 1 ? 2 : 1; }
 
@@ -3012,7 +3017,6 @@
 
     // --- UI RENDERING ---
     function updateUI() {
-      if (netActive() && state.phase !== 'SETUP') state.activePlayer = NET.role;
       const p = state.activePlayer;
       const remAP = getRemainingAP(p);
       const queuedAP = getQueuedAP(p);
@@ -3032,6 +3036,10 @@
         pTxt.textContent = 'PLAYER 2 (RED)';
       }
       phaseBadge.textContent = state.phase.replace('_', ' ');
+      if (netActive() && state.phase === 'PLANNING') {
+        phaseBadge.textContent += NET.locked[netPeerRole()] ? ' • OPPONENT LOCKED ✓' : ' • OPPONENT PLANNING…';
+      }
+      pTxt.textContent = (netActive() ? 'YOU: ' : '') + pTxt.textContent;
 
       document.getElementById('hud-turn').textContent = state.turn;
       const turnsToRestock = MISSILE_RESTOCK_TURNS - ((state.turn - 1) % MISSILE_RESTOCK_TURNS);
@@ -3783,6 +3791,8 @@
 
     // --- RESET CAMPAIGN ---
     function resetCampaign(logMsg = true) {
+      nextEntityId = 1;
+      nextOrderId = 1;
       state.phase = 'SETUP';
       state.setupStep = 0;
       state.turn = 1;
