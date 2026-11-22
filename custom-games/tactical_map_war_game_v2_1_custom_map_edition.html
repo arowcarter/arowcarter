@@ -228,6 +228,7 @@
     </div>
     <div class="flex items-center gap-2">
       <button id="btn-review-player" class="hidden tac-btn px-3 py-1 rounded-lg bg-slate-700 hover:bg-slate-600 text-white font-bold text-xs"></button>
+      <button id="btn-replay-resolution" class="hidden tac-btn px-3 py-1 rounded-lg bg-slate-700 hover:bg-slate-600 text-white font-bold text-xs">Replay Resolution</button>
       <button id="btn-victory-result" class="hidden tac-btn px-3 py-1 rounded-lg bg-amber-700 hover:bg-amber-600 text-white font-bold text-xs">Victory Results</button>
       <button id="btn-next-turn" class="hidden tac-btn px-3.5 py-1 rounded-lg bg-gradient-to-b from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 text-white font-extrabold text-xs uppercase tracking-wider">
         Begin Next Turn (Pass to P1) ▶
@@ -448,7 +449,7 @@
               <li>• <strong>Multi-Action Chained Movement:</strong> Any unit may chain multiple <strong>1 AP</strong> move legs in a single turn (up to 4 AP). Road bonus (+1" Land) applies per leg.</li>
               <li>• <strong>Step 1 — Movement &amp; Resupply:</strong> All units animate leg-by-leg simultaneously. Spent units touching or passing a friendly Base/Resupply Hub (0.62") along any leg reload immediately!</li>
               <li>• <strong>Step 2 — Ordered Engagement (0 AP):</strong> Loaded units ordered to engage fire at the closest valid enemy in range after movement. A loaded unit attacked without an order returns fire if it can attack an enemy targeting it. Units fire once; mutual kills are possible. Firing makes a unit <strong>SPENT</strong>.</li>
-              <li>• <strong>Fog of war:</strong> Enemy units are visible only within a friendly unit's engagement range or 3" of a friendly structure. Structures remain visible. Hot-seat players can review the resolved turn from either perspective.</li>
+              <li>• <strong>Fog of war:</strong> Enemy units are visible only within a friendly unit's engagement range or 3" of a friendly structure. Structures remain visible. Hot-seat players can replay the resolved turn from their own perspective.</li>
               <li>• <strong>Step 3 — Missiles:</strong> Missiles (Atk 8) strike; Air Defense within 3" intercepts with D4.</li>
               <li>• <strong>Step 4 — Logistics:</strong> Idle Resupply ticks (2 turns), production spawns, 4 AP construction/repairs complete, and +1 Missile restocks every 5 turns.</li>
             </ul>
@@ -695,6 +696,7 @@
     };
     let lastMapSrc = null; // {text, name, kind:'any'|'compact'} or null for the default map
     let rngState = 1;
+    const resolutionReplay = { frames: [], start: 0, playback: null, step: 1 };
 
     function netActive() { return !!(NET.conn && NET.conn.open); }
     // Online, the acting player is always the local role (except during alternating setup placement).
@@ -1825,9 +1827,9 @@
     }
 
     // Enemy units are revealed only inside a friendly unit's engagement range (or a friendly base zone).
-    function isEntityVisible(e, viewer = fogViewer()) {
+    function isEntityVisible(e, viewer = fogViewer(), entities = state.entities) {
       if (viewer === null || e.owner === viewer || e.kind === 'structure') return true;
-      return state.entities.some(f => f.owner === viewer &&
+      return entities.some(f => f.owner === viewer &&
         distIn(f.x, f.y, e.x, e.y) <= (f.kind === 'unit' ? UNIT_DEFS[f.type].range : ESTABLISHED_ZONE_IN) + 0.03);
     }
 
@@ -2379,6 +2381,7 @@
     function sleep(ms) { return new Promise(res => setTimeout(res, ms)); }
 
     function highlightResStep(stepNum) {
+      resolutionReplay.step = stepNum;
       document.querySelectorAll('#res-steps [data-step]').forEach(el => {
         const s = Number(el.dataset.step);
         if (s === stepNum) {
@@ -2393,8 +2396,32 @@
 
     function addEffect(fx, entities = []) {
       const viewer = fogViewer();
-      if (entities.some(e => !isEntityVisible(e, viewer))) return;
-      state.effects.push({ ...fx, viewer: entities.some(e => e.kind === 'unit') ? viewer : null, createdAt: performance.now() });
+      const privateEffect = viewer !== null && entities.some(e => e.kind === 'unit');
+      const viewers = privateEffect
+        ? (netActive() ? [viewer] : [1, 2]).filter(p => entities.every(e => isEntityVisible(e, p)))
+        : null;
+      if (viewers && viewers.length === 0) return;
+      state.effects.push({ ...fx, viewers, createdAt: performance.now() });
+    }
+
+    function recordResolutionFrame() {
+      if (netActive()) return;
+      const now = performance.now();
+      resolutionReplay.frames.push({
+        time: now - resolutionReplay.start,
+        step: resolutionReplay.step,
+        entities: state.entities.map(e => ({ ...e })),
+        ruins: state.ruins.map(r => ({ ...r })),
+        effects: state.effects.map(fx => ({ ...fx }))
+      });
+    }
+
+    function startResolutionReplay() {
+      if (netActive() || resolutionReplay.playback || resolutionReplay.frames.length < 2 ||
+          (state.phase !== 'POST_RESOLUTION' && state.phase !== 'GAMEOVER')) return;
+      state.selectedId = null;
+      resolutionReplay.playback = { start: performance.now(), index: 0 };
+      updateUI();
     }
 
     function checkContactResupplyForUnit(unit, x, y) {
@@ -2448,6 +2475,9 @@
 
     async function runSimultaneousResolution() {
       if (netActive()) rngState = (NET.seed + state.turn * 7919) >>> 0;
+      resolutionReplay.frames = [];
+      resolutionReplay.start = performance.now();
+      resolutionReplay.playback = null;
       state.phase = 'RESOLVING';
       state.selectedId = null;
       document.getElementById('resolution-banner').classList.remove('hidden');
@@ -2463,6 +2493,7 @@
 
       // STEP 1: SIMULTANEOUS MULTI-LEG MOVEMENT & MID-PATH RESUPPLY
       highlightResStep(1);
+      recordResolutionFrame();
       const unitPaths = new Map();
       for (const p of [1, 2]) {
         for (const o of state.orders[p]) {
@@ -2504,6 +2535,7 @@
                 a.unit.y = a.fromY + (a.toY - a.fromY) * ease;
                 checkContactResupplyForUnit(a.unit, a.unit.x, a.unit.y);
               }
+              recordResolutionFrame();
               if (t < 1) requestAnimationFrame(stepAnim);
               else resolve();
             }
@@ -2520,10 +2552,12 @@
           checkContactResupplyForUnit(u, u.x, u.y);
         }
       }
+      recordResolutionFrame();
       await sleep(350);
 
       // STEP 2: ORDERED ENGAGEMENT AND RETURN FIRE (SIMULTANEOUS, MUTUAL KILLS)
       highlightResStep(2);
+      recordResolutionFrame();
       const targetAttackers = new Map();
       const assignedAttackers = new Set();
       const engageIds = new Set();
@@ -2610,6 +2644,7 @@
           }
         }
 
+        recordResolutionFrame();
         if (destroyedInStep2.size > 0) SFX.play('explode');
         else SFX.play('miss');
 
@@ -2625,10 +2660,12 @@
       } else {
         addLog('Step 2: No units ordered to engage had a target in range.', 'slate');
       }
+      recordResolutionFrame();
       await sleep(950);
 
       // STEP 3: MISSILES & AIR DEFENSE INTERCEPTION
       highlightResStep(3);
+      recordResolutionFrame();
       const missileOrders = [
         ...state.orders[1].filter(o => o.type === 'MISSILE').map(o => ({ ...o, owner: 1 })),
         ...state.orders[2].filter(o => o.type === 'MISSILE').map(o => ({ ...o, owner: 2 }))
@@ -2695,6 +2732,7 @@
           }
         }
 
+        recordResolutionFrame();
         if (destroyedByMissile.size > 0) {
           const survivors = [];
           for (const e of state.entities) {
@@ -2709,10 +2747,12 @@
       } else {
         addLog('Step 3: No Missiles launched this turn.', 'slate');
       }
+      recordResolutionFrame();
       await sleep(800);
 
       // STEP 4: LOGISTICS, PRODUCTION, CONSTRUCTION & REPAIRS
       highlightResStep(4);
+      recordResolutionFrame();
 
       for (const e of state.entities) {
         if (e.kind === 'structure' && e.cooldown > 0) {
@@ -2790,6 +2830,7 @@
         state.missiles[2]++;
         addLog('🚀 <strong>5-TURN RESTOCK:</strong> Both players received +1 Missile!', 'amber');
       }
+      recordResolutionFrame();
 
       state.orders[1] = [];
       state.orders[2] = [];
@@ -2814,7 +2855,7 @@
     }
 
     function beginNextTurn() {
-      if (state.phase !== 'POST_RESOLUTION') return;
+      if (state.phase !== 'POST_RESOLUTION' || resolutionReplay.playback) return;
       if (netActive()) {
         if (!NET.nextReady[1] || !NET.nextReady[2]) return;
         NET.nextReady = { 1: false, 2: false };
@@ -2899,6 +2940,7 @@
     }
 
     function processMapClick(clientX, clientY) {
+      if (resolutionReplay.playback) return;
       const rect = canvas.getBoundingClientRect();
       const px = clientX - rect.left;
       const py = clientY - rect.top;
@@ -3051,10 +3093,16 @@
       });
       const reviewBtn = document.getElementById('btn-review-player');
       reviewBtn.classList.toggle('hidden', netActive() || (state.phase !== 'POST_RESOLUTION' && state.phase !== 'GAMEOVER'));
+      reviewBtn.disabled = !!resolutionReplay.playback;
       reviewBtn.textContent = `Pass to ${pName(p === 1 ? 2 : 1)} to Review`;
-      document.getElementById('btn-victory-result').classList.toggle('hidden', state.phase !== 'GAMEOVER');
+      const replayBtn = document.getElementById('btn-replay-resolution');
+      replayBtn.classList.toggle('hidden', netActive() || resolutionReplay.frames.length < 2 || (state.phase !== 'POST_RESOLUTION' && state.phase !== 'GAMEOVER'));
+      replayBtn.disabled = !!resolutionReplay.playback;
+      const victoryBtn = document.getElementById('btn-victory-result');
+      victoryBtn.classList.toggle('hidden', state.phase !== 'GAMEOVER');
+      victoryBtn.disabled = !!resolutionReplay.playback;
       const nextBtn = document.getElementById('btn-next-turn');
-      nextBtn.disabled = netActive() && NET.nextReady[NET.role];
+      nextBtn.disabled = !!resolutionReplay.playback || (netActive() && NET.nextReady[NET.role]);
       nextBtn.textContent = netActive()
         ? (NET.nextReady[NET.role] ? 'Waiting for opponent…' : 'Ready for Next Turn ▶')
         : 'Begin Next Turn (Pass to P1) ▶';
@@ -3407,6 +3455,28 @@
     }
 
     function renderFrame(now) {
+      let replayFrame = null;
+      let visualNow = now;
+      const playback = resolutionReplay.playback;
+      if (playback) {
+        const frames = resolutionReplay.frames;
+        const elapsed = Math.max(0, now - playback.start);
+        if (elapsed >= frames[frames.length - 1].time) {
+          resolutionReplay.playback = null;
+          highlightResStep(4);
+          updateUI();
+        } else {
+          while (playback.index + 1 < frames.length && frames[playback.index + 1].time <= elapsed) playback.index++;
+          replayFrame = frames[playback.index];
+          visualNow = resolutionReplay.start + elapsed;
+          if (playback.step !== replayFrame.step) {
+            playback.step = replayFrame.step;
+            highlightResStep(replayFrame.step);
+          }
+        }
+      }
+      const renderEntities = replayFrame ? replayFrame.entities : state.entities;
+      const renderRuins = replayFrame ? replayFrame.ruins : state.ruins;
       const w = canvas.clientWidth;
       const h = canvas.clientHeight;
       ctx.clearRect(0, 0, w, h);
@@ -3575,7 +3645,7 @@
       // 4. Toggleable 3" Established Zones
       if (state.showZones) {
         ctx.save();
-        for (const e of state.entities) {
+        for (const e of renderEntities) {
           if (e.kind === 'structure' && STRUCTURE_DEFS[e.type].isBase) {
             ctx.beginPath();
             ctx.arc(toPxX(e.x), toPxY(e.y), ESTABLISHED_ZONE_IN * ppi, 0, Math.PI * 2);
@@ -3593,8 +3663,8 @@
       // 5. Toggleable Engagement Radii (Loaded units only)
       if (state.showRanges) {
         ctx.save();
-        for (const e of state.entities) {
-          if (e.kind === 'unit' && !e.ammoSpent && isEntityVisible(e)) {
+        for (const e of renderEntities) {
+          if (e.kind === 'unit' && !e.ammoSpent && isEntityVisible(e, fogViewer(), renderEntities)) {
             const rng = UNIT_DEFS[e.type].range * ppi;
             ctx.beginPath();
             ctx.arc(toPxX(e.x), toPxY(e.y), rng, 0, Math.PI * 2);
@@ -3609,7 +3679,7 @@
       }
 
       // 6. Ruins
-      for (const r of state.ruins) {
+      for (const r of renderRuins) {
         const px = toPxX(r.x), py = toPxY(r.y);
         ctx.save();
         ctx.beginPath();
@@ -3690,8 +3760,8 @@
       }
 
       // 8. Entities
-      for (const e of state.entities) {
-        if (!isEntityVisible(e)) continue;
+      for (const e of renderEntities) {
+        if (!isEntityVisible(e, fogViewer(), renderEntities)) continue;
         const px = toPxX(e.x), py = toPxY(e.y);
         if (state.selectedId === e.id) {
           ctx.save();
@@ -3801,10 +3871,12 @@
       }
 
       // 10. Visual Combat & Resupply Effects
-      state.effects = state.effects.filter(fx => now - fx.createdAt < fx.duration);
-      for (const fx of state.effects) {
-        if (fx.viewer !== null && fx.viewer !== fogViewer()) continue;
-        const p = (now - fx.createdAt) / fx.duration;
+      if (!replayFrame) state.effects = state.effects.filter(fx => now - fx.createdAt < fx.duration);
+      const renderEffects = replayFrame ? replayFrame.effects : state.effects;
+      for (const fx of renderEffects) {
+        if (fx.viewers && !fx.viewers.includes(fogViewer())) continue;
+        const p = (visualNow - fx.createdAt) / fx.duration;
+        if (p < 0 || p >= 1) continue;
         ctx.save();
         ctx.globalAlpha = Math.max(0, 1 - p);
         if (fx.type === 'beam') {
@@ -3849,6 +3921,8 @@
       state.selectedId = null;
       state.mode = 'IDLE';
       state.effects = [];
+      resolutionReplay.frames = [];
+      resolutionReplay.playback = null;
       NET.locked = { 1: false, 2: false };
       NET.peerOrders = [];
       NET.nextReady = { 1: false, 2: false };
@@ -4074,7 +4148,7 @@
     });
     document.getElementById('btn-lock-orders').addEventListener('click', lockActivePlayerOrders);
     document.getElementById('btn-review-player').addEventListener('click', () => {
-      if (netActive() || (state.phase !== 'POST_RESOLUTION' && state.phase !== 'GAMEOVER')) return;
+      if (netActive() || resolutionReplay.playback || (state.phase !== 'POST_RESOLUTION' && state.phase !== 'GAMEOVER')) return;
       const nextPlayer = state.activePlayer === 1 ? 2 : 1;
       const modal = document.getElementById('handoff-modal');
       document.getElementById('handoff-title').textContent = 'Resolution Review';
@@ -4090,11 +4164,13 @@
         modal.classList.add('hidden');
         SFX.play('click');
         updateUI();
+        startResolutionReplay();
       };
       modal.classList.remove('hidden');
     });
+    document.getElementById('btn-replay-resolution').addEventListener('click', startResolutionReplay);
     document.getElementById('btn-next-turn').addEventListener('click', () => {
-      if (state.phase !== 'POST_RESOLUTION') return;
+      if (state.phase !== 'POST_RESOLUTION' || resolutionReplay.playback) return;
       if (netActive()) {
         if (NET.nextReady[NET.role]) return;
         NET.nextReady[NET.role] = true;
