@@ -524,6 +524,7 @@
     const RUIN_REPAIR_TURNS = 6;
     const MISSILE_ATK = 8;
     const MISSILE_RESTOCK_TURNS = 5;
+    const ENGAGE_AP_COST = 0; // AP cost to order a unit to engage this turn
 
     // UNIT_DEFS and STRUCTURE_DEFS live in units.js
 
@@ -1783,6 +1784,45 @@
       );
     }
 
+    // --- ENGAGE ORDERS & FOG OF WAR ---
+    function hasEngageOrder(unitId, player) {
+      return state.orders[player].some(o => o.type === 'ENGAGE' && o.unitId === unitId);
+    }
+
+    function toggleEngageOrder(unit) {
+      const p = state.activePlayer;
+      if (state.phase !== 'PLANNING' || unit.owner !== p || unit.ammoSpent) return;
+      const list = state.orders[p];
+      const idx = list.findIndex(o => o.type === 'ENGAGE' && o.unitId === unit.id);
+      if (idx >= 0) {
+        list.splice(idx, 1);
+      } else {
+        if (getRemainingAP(p) < ENGAGE_AP_COST) {
+          showToast(`Not enough AP (need ${ENGAGE_AP_COST} AP)!`, 'warn');
+          return;
+        }
+        list.push({
+          id: nextOrderId++, type: 'ENGAGE', cost: ENGAGE_AP_COST, unitId: unit.id,
+          label: `${UNIT_DEFS[unit.type].name} ENGAGE (attack anything in range after moving)`
+        });
+      }
+      SFX.play('click');
+      updateUI();
+    }
+
+    // Viewer whose perspective hides enemy units; null shows everything (hot-seat outside planning).
+    function fogViewer() {
+      if (netActive()) return NET.role;
+      return state.phase === 'PLANNING' ? state.activePlayer : null;
+    }
+
+    // Enemy units are revealed only inside a friendly unit's engagement range (or a friendly base zone).
+    function isEntityVisible(e, viewer = fogViewer()) {
+      if (viewer === null || e.owner === viewer || e.kind === 'structure') return true;
+      return state.entities.some(f => f.owner === viewer &&
+        distIn(f.x, f.y, e.x, e.y) <= (f.kind === 'unit' ? UNIT_DEFS[f.type].range : ESTABLISHED_ZONE_IN) + 0.03);
+    }
+
     // --- UI FEEDBACK: TOAST & LOG ---
     function showToast(msg, tone = 'info') {
       const container = document.getElementById('toast-container');
@@ -2461,12 +2501,16 @@
       }
       await sleep(350);
 
-      // STEP 2: AUTOMATIC ENGAGEMENT (0 AP, SIMULTANEOUS, MUTUAL KILLS)
+      // STEP 2: ORDERED ENGAGEMENT (units with an ENGAGE order only; SIMULTANEOUS, MUTUAL KILLS)
       highlightResStep(2);
       const targetAttackers = new Map();
+      const engageIds = new Set();
+      for (const p of [1, 2]) {
+        for (const o of state.orders[p]) if (o.type === 'ENGAGE') engageIds.add(o.unitId);
+      }
 
       for (const unit of state.entities) {
-        if (unit.kind !== 'unit' || unit.ammoSpent) continue;
+        if (unit.kind !== 'unit' || unit.ammoSpent || !engageIds.has(unit.id)) continue;
         const candidates = state.entities.filter(t => canAutoEngage(unit, t));
         if (candidates.length === 0) continue;
 
@@ -2532,7 +2576,7 @@
         }
         state.entities = survivors;
       } else {
-        addLog('Step 2: No Loaded units in Automatic Engagement range.', 'slate');
+        addLog('Step 2: No units ordered to engage had a target in range.', 'slate');
       }
       await sleep(950);
 
@@ -2782,6 +2826,7 @@
       // Scale hit radius cleanly so clicking icons at 1x zoom (68" map) or 8x zoom feels responsive
       let bestDist = Math.max(0.48, 16 / Math.max(1, ppi));
       for (const e of state.entities) {
+        if (!isEntityVisible(e)) continue;
         const d = distIn(mx, my, e.x, e.y);
         if (d < bestDist) {
           bestDist = d;
@@ -3096,6 +3141,9 @@
               <button id="act-move-leg" ${canMove ? '' : 'disabled'} class="tac-btn w-full py-1.5 rounded-lg bg-sky-700 hover:bg-sky-600 text-white font-bold text-xs">
                 🧭 ${legs > 0 ? `Chain Move Leg #${legs + 1}` : 'Plot Move Path'} (1 AP)
               </button>
+              <button id="act-engage" ${ent.ammoSpent ? 'disabled' : ''} class="tac-btn w-full py-1.5 rounded-lg ${hasEngageOrder(ent.id, p) ? 'bg-rose-600 hover:bg-rose-500' : 'bg-slate-700 hover:bg-slate-600'} text-white font-bold text-xs">
+                ${hasEngageOrder(ent.id, p) ? '🎯 ENGAGING — click to cancel' : `🎯 Order Engage (${ENGAGE_AP_COST} AP)`}
+              </button>
               ${ent.type === 'infantry' ? `
                 <button id="act-convert-hub" ${canBuild ? '' : 'disabled'} class="tac-btn w-full py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-white font-bold text-xs">
                   ⛽ Convert Infantry → Resupply Hub (4 AP)
@@ -3115,6 +3163,8 @@
           document.getElementById('act-move-leg').onclick = () =>
             setMode('MOVE', `CLICK WITHIN RANGE TO CHAIN LEG #${legs + 1} (1 AP)`);
         }
+        const engBtn = document.getElementById('act-engage');
+        if (engBtn) engBtn.onclick = () => toggleEngageOrder(ent);
         const hubBtn = document.getElementById('act-convert-hub');
         if (hubBtn && canBuild) {
           hubBtn.onclick = () => queueConstructOrder(ent, 'resupply_hub');
@@ -3483,7 +3533,7 @@
       if (state.showRanges) {
         ctx.save();
         for (const e of state.entities) {
-          if (e.kind === 'unit' && !e.ammoSpent) {
+          if (e.kind === 'unit' && !e.ammoSpent && isEntityVisible(e)) {
             const rng = UNIT_DEFS[e.type].range * ppi;
             ctx.beginPath();
             ctx.arc(toPxX(e.x), toPxY(e.y), rng, 0, Math.PI * 2);
@@ -3580,6 +3630,7 @@
 
       // 8. Entities
       for (const e of state.entities) {
+        if (!isEntityVisible(e)) continue;
         const px = toPxX(e.x), py = toPxY(e.y);
         if (state.selectedId === e.id) {
           ctx.save();
