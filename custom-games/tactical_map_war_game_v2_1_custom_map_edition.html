@@ -1,0 +1,3800 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tactical Map War Game v2.1 — WEGO, Auto-Engagement &amp; Custom Maps</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-deep: #090e1a;
+      --bg-panel: #111827;
+      --bg-card: #182235;
+      --border-tac: #28354d;
+      --p1-color: #38bdf8;
+      --p2-color: #fb7185;
+      --accent-amber: #f59e0b;
+      --accent-emerald: #10b981;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      background-color: var(--bg-deep);
+      color: #e2e8f0;
+      overflow-x: hidden;
+    }
+
+    .font-mono-tac {
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #0f172a; }
+    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #475569; }
+
+    .tac-btn {
+      position: relative;
+      transition: all 0.16s ease;
+      border: 1px solid rgba(148, 163, 184, 0.25);
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    }
+    .tac-btn:hover:not(:disabled) {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.14);
+    }
+    .tac-btn:active:not(:disabled) {
+      transform: translateY(0px);
+    }
+    .tac-btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+      filter: grayscale(0.5);
+    }
+
+    .ap-pip {
+      width: 13px;
+      height: 13px;
+      border-radius: 3px;
+      transform: rotate(45deg);
+      transition: all 0.22s ease;
+    }
+    .ap-pip.active-p1 {
+      background: #38bdf8;
+      box-shadow: 0 0 10px rgba(56, 189, 248, 0.8);
+      border: 1px solid #bae6fd;
+    }
+    .ap-pip.active-p2 {
+      background: #fb7185;
+      box-shadow: 0 0 10px rgba(251, 113, 133, 0.8);
+      border: 1px solid #fecdd3;
+    }
+    .ap-pip.queued {
+      background: #f59e0b;
+      box-shadow: 0 0 8px rgba(245, 158, 11, 0.65);
+      border: 1px solid #fde68a;
+    }
+    .ap-pip.empty {
+      background: #1e293b;
+      border: 1px solid #475569;
+    }
+
+    #canvas-wrapper {
+      position: relative;
+      background: radial-gradient(circle at center, #131f33 0%, #090e1a 100%);
+      border: 1px solid #28354d;
+      box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.7);
+    }
+
+    canvas {
+      display: block;
+      cursor: crosshair;
+      touch-action: none;
+    }
+
+    @keyframes toastPop {
+      0% { opacity: 0; transform: translate(-50%, -14px) scale(0.96); }
+      10% { opacity: 1; transform: translate(-50%, 0) scale(1); }
+      88% { opacity: 1; transform: translate(-50%, 0) scale(1); }
+      100% { opacity: 0; transform: translate(-50%, -8px) scale(0.98); }
+    }
+    .toast-animate {
+      animation: toastPop 3.8s ease forwards;
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col select-none">
+
+  <!-- TOP COMMAND HUD BAR -->
+  <header class="w-full bg-[#0f172a] border-b border-slate-700/80 px-3 py-2 flex flex-wrap items-center justify-between gap-2 z-30 shadow-lg">
+    <div class="flex items-center gap-3 flex-wrap">
+      <div class="flex items-center gap-2">
+        <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-sky-500/20 to-indigo-600/30 border border-sky-400/40 flex items-center justify-center">
+          <svg class="w-5 h-5 text-sky-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+          </svg>
+        </div>
+        <div>
+          <h1 class="text-sm sm:text-base font-extrabold tracking-wider uppercase text-slate-100 leading-tight">Tactical Map War Game</h1>
+          <div id="hud-map-scale-sub" class="text-[10px] font-mono-tac text-sky-400 tracking-widest">v2.1 • 4× SCALE WEGO, AUTO-ENGAGE &amp; MULTI-ACTION (68"×44")</div>
+        </div>
+      </div>
+
+      <div id="hud-player-pill" class="px-3 py-1.5 rounded-lg border flex items-center gap-2 font-bold text-xs sm:text-sm tracking-wide transition-all">
+        <span id="hud-player-dot" class="w-2.5 h-2.5 rounded-full"></span>
+        <span id="hud-player-text">PLAYER 1 (BLUE)</span>
+        <span id="hud-phase-badge" class="ml-1 px-1.5 py-0.5 rounded text-[10px] font-mono-tac bg-slate-800/90 text-amber-300 border border-amber-500/40">SETUP</span>
+      </div>
+    </div>
+
+    <div class="flex items-center gap-2.5 sm:gap-3.5 flex-wrap">
+      <div class="bg-slate-900/90 border border-slate-700/80 rounded-lg px-2.5 py-1 flex items-center gap-3">
+        <div>
+          <div class="text-[9px] font-mono-tac uppercase text-slate-400">Turn</div>
+          <div id="hud-turn" class="text-sm font-mono-tac font-bold text-slate-100">1</div>
+        </div>
+        <div class="h-6 w-px bg-slate-700"></div>
+        <div>
+          <div class="text-[9px] font-mono-tac uppercase text-slate-400">Restock</div>
+          <div id="hud-restock" class="text-xs font-mono-tac font-semibold text-amber-400">In 5t</div>
+        </div>
+      </div>
+
+      <div class="bg-slate-900/90 border border-slate-700/80 rounded-lg px-3 py-1.5 flex items-center gap-2.5" title="4 AP per player per Planning Phase">
+        <span class="text-[10px] font-mono-tac uppercase text-slate-400 font-semibold">AP</span>
+        <div id="hud-ap-pips" class="flex items-center gap-2">
+          <div class="ap-pip active-p1"></div>
+          <div class="ap-pip active-p1"></div>
+          <div class="ap-pip active-p1"></div>
+          <div class="ap-pip active-p1"></div>
+        </div>
+        <span id="hud-ap-text" class="text-xs font-mono-tac font-bold text-slate-200 ml-0.5">4/4</span>
+      </div>
+
+      <div class="flex items-center gap-1.5">
+        <div class="bg-slate-900/90 border border-slate-700/80 rounded-lg px-2.5 py-1 flex items-center gap-1.5" title="Available Missiles (+1 every 5 turns)">
+          <span class="text-amber-400 text-sm">🚀</span>
+          <span id="hud-missiles" class="text-sm font-mono-tac font-bold text-amber-300">6</span>
+        </div>
+        <button id="btn-launch-missile" class="tac-btn px-2.5 py-1.5 rounded-lg bg-gradient-to-b from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 text-white text-xs font-bold tracking-wide flex items-center gap-1.5">
+          <span>QUEUE MISSILE</span>
+          <span class="text-[10px] font-mono-tac bg-black/30 px-1 rounded">1 AP</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+      <button id="btn-open-map-hud" class="tac-btn px-2.5 py-1.5 rounded-lg bg-gradient-to-b from-teal-600 to-teal-700 hover:from-teal-500 hover:to-teal-600 text-white text-xs font-bold tracking-wide" title="Upload Custom Map (.txt, .json, .csv)">
+        🗺️ Map
+      </button>
+      <button id="btn-toggle-pins" class="hidden tac-btn px-2 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-rose-300 text-xs font-semibold" title="Toggle Imported Map Landmark Pins">
+        Pins: ON
+      </button>
+      <button id="btn-toggle-zones" class="tac-btn px-2 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-emerald-300 text-xs font-semibold" title="Toggle 3-inch Established Zones">
+        Zones: ON
+      </button>
+      <button id="btn-toggle-ranges" class="tac-btn px-2 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-rose-300 text-xs font-semibold" title="Toggle Automatic Engagement Radii">
+        Engage: ON
+      </button>
+      <button id="btn-toggle-sound" class="tac-btn px-2 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold" title="Toggle Tactical Audio">
+        🔊
+      </button>
+      <button id="btn-rules" class="tac-btn px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-sky-300 text-xs font-bold">
+        📖 Manual
+      </button>
+      <button id="btn-lock-orders" class="tac-btn px-3 py-1.5 rounded-lg bg-gradient-to-b from-emerald-600 to-emerald-700 hover:from-emerald-500 hover:to-emerald-600 text-white text-xs font-extrabold tracking-wider uppercase">
+        Lock Orders 🔒
+      </button>
+    </div>
+  </header>
+
+  <!-- SETUP BANNER -->
+  <div id="setup-banner" class="w-full bg-gradient-to-r from-indigo-950 via-slate-900 to-indigo-950 border-b border-sky-500/40 px-4 py-2 flex flex-wrap items-center justify-between gap-2 text-xs sm:text-sm">
+    <div class="flex items-center gap-2">
+      <span class="px-2 py-0.5 rounded bg-sky-500/20 border border-sky-400/50 text-sky-300 font-mono-tac font-bold text-xs">DEPLOYMENT</span>
+      <span id="setup-instruction" class="text-slate-200 font-medium">Player 1 (Blue): Place Main Base #1 on dry land within 6.0" of any map edge.</span>
+    </div>
+    <div class="flex items-center gap-2 flex-wrap">
+      <button id="btn-open-map-setup" class="tac-btn px-3 py-1 rounded-lg bg-gradient-to-b from-teal-600 to-teal-700 hover:from-teal-500 hover:to-teal-600 text-white text-xs font-bold">
+        🗺️ Upload Map
+      </button>
+      <button id="btn-auto-deploy" class="tac-btn px-3 py-1 rounded-lg bg-gradient-to-b from-sky-600 to-blue-700 hover:from-sky-500 hover:to-blue-600 text-white text-xs font-bold">
+        ⚡ Quick Auto-Deploy
+      </button>
+    </div>
+  </div>
+
+  <!-- RESOLUTION STEPPER BANNER -->
+  <div id="resolution-banner" class="hidden w-full bg-gradient-to-r from-amber-950/90 via-slate-900 to-amber-950/90 border-b border-amber-500/50 px-4 py-2 flex flex-wrap items-center justify-between gap-2 text-xs">
+    <div class="flex items-center gap-2 flex-wrap">
+      <span class="px-2 py-0.5 rounded bg-amber-500/20 border border-amber-400/60 text-amber-300 font-mono-tac font-bold">WEGO RESOLUTION</span>
+      <div id="res-steps" class="flex items-center gap-1.5 font-mono-tac text-[11px] flex-wrap">
+        <span data-step="1" class="px-2 py-0.5 rounded bg-slate-800 text-slate-400">1. Move &amp; Resupply</span>
+        <span class="text-slate-600">→</span>
+        <span data-step="2" class="px-2 py-0.5 rounded bg-slate-800 text-slate-400">2. Auto-Engage</span>
+        <span class="text-slate-600">→</span>
+        <span data-step="3" class="px-2 py-0.5 rounded bg-slate-800 text-slate-400">3. Missiles</span>
+        <span class="text-slate-600">→</span>
+        <span data-step="4" class="px-2 py-0.5 rounded bg-slate-800 text-slate-400">4. Logistics</span>
+      </div>
+    </div>
+    <button id="btn-next-turn" class="hidden tac-btn px-3.5 py-1 rounded-lg bg-gradient-to-b from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 text-white font-extrabold text-xs uppercase tracking-wider">
+      Begin Next Turn (Pass to P1) ▶
+    </button>
+  </div>
+
+  <!-- MAIN WORKSPACE -->
+  <main class="flex-1 flex flex-col lg:flex-row overflow-hidden">
+    <!-- CENTER MAP AREA -->
+    <section class="flex-1 flex flex-col p-2 sm:p-3 min-h-[420px] relative">
+      <div id="toast-container" class="pointer-events-none fixed top-20 left-1/2 z-40 w-[92%] max-w-lg"></div>
+
+      <div id="canvas-wrapper" class="flex-1 rounded-xl overflow-hidden flex items-center justify-center relative">
+        <canvas id="game-canvas"></canvas>
+
+        <!-- Pan & Zoom Camera Toolbar (1x-8x) -->
+        <div class="absolute top-3 right-3 z-20 flex items-center gap-1 bg-slate-950/90 backdrop-blur-sm border border-slate-700/80 rounded-xl p-1 shadow-xl">
+          <button id="btn-pan-mode" type="button" class="px-2 py-1 rounded-lg text-[11px] font-mono-tac font-bold text-slate-300 hover:bg-slate-800 hover:text-white transition-colors" title="Toggle Pan Mode (or hold Space / Middle-Click to drag)">
+            ✋ Pan
+          </button>
+          <span class="w-px h-4 bg-slate-700"></span>
+          <button id="btn-zoom-out" type="button" class="px-2 py-1 rounded-lg text-xs font-mono-tac font-bold text-slate-300 hover:bg-slate-800 hover:text-white transition-colors" title="Zoom Out">&minus;</button>
+          <span id="zoom-readout" class="px-1.5 text-[11px] font-mono-tac font-bold text-teal-400 min-w-[44px] text-center">100%</span>
+          <button id="btn-zoom-in" type="button" class="px-2 py-1 rounded-lg text-xs font-mono-tac font-bold text-slate-300 hover:bg-slate-800 hover:text-white transition-colors" title="Zoom In">+</button>
+          <button id="btn-reset-view" type="button" class="px-2 py-1 rounded-lg text-[10px] font-mono-tac text-slate-400 hover:bg-slate-800 hover:text-white border-l border-slate-700/80 transition-colors" title="Reset Camera Zoom &amp; Pan">
+            Reset
+          </button>
+        </div>
+
+        <div id="map-mode-banner" class="hidden absolute top-3 left-1/2 -translate-x-1/2 px-3.5 py-1.5 rounded-full bg-slate-950/90 border border-amber-400/70 text-amber-300 text-xs font-bold tracking-wide shadow-xl flex items-center gap-2 z-20">
+          <span id="map-mode-text">PLOT MOVE PATH</span>
+          <button id="btn-cancel-mode" class="ml-1 px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-[10px] font-mono-tac">ESC / CANCEL</button>
+        </div>
+
+        <div class="hidden sm:block pointer-events-none absolute bottom-2.5 right-3 z-10 px-2.5 py-1 rounded-lg bg-slate-950/75 border border-slate-800 text-[10px] font-mono-tac text-slate-400">
+          Scroll to zoom (1×–8×) • Space+Drag or ✋ Pan to move camera
+        </div>
+      </div>
+
+      <!-- Bottom Telemetry Bar -->
+      <div class="mt-2 bg-slate-900/90 border border-slate-800 rounded-lg px-3 py-1.5 flex flex-wrap items-center justify-between gap-2 text-[11px] font-mono-tac text-slate-400">
+        <div class="flex items-center gap-3 sm:gap-4 flex-wrap">
+          <span>MAP: <strong id="tel-map-name" class="text-teal-300">Default 68"×44"</strong></span>
+          <span>CURSOR: <strong id="tel-coords" class="text-slate-200">--.--", --.--"</strong></span>
+          <span>TERRAIN: <strong id="tel-terrain" class="text-emerald-400">LAND</strong></span>
+          <span id="tel-elev-wrap" class="hidden">ELEV: <strong id="tel-elev" class="text-amber-300">-</strong></span>
+          <span>RULER: <strong id="tel-dist" class="text-amber-300">—</strong></span>
+        </div>
+        <div class="flex items-center gap-3 text-[10px]">
+          <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-sm bg-sky-400 inline-block"></span> P1 Main: <strong id="tel-p1-bases" class="text-sky-300">0/2</strong></span>
+          <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-sm bg-rose-400 inline-block"></span> P2 Main: <strong id="tel-p2-bases" class="text-rose-300">0/2</strong></span>
+        </div>
+      </div>
+    </section>
+
+    <!-- RIGHT SIDEBAR -->
+    <aside class="w-full lg:w-[385px] xl:w-[410px] bg-[#0f172a] border-t lg:border-t-0 lg:border-l border-slate-700/80 flex flex-col max-h-[65vh] lg:max-h-none lg:h-[calc(100vh-58px)]">
+      <!-- Selected Entity Inspector -->
+      <div class="p-3 border-b border-slate-800 overflow-y-auto flex-shrink-0 max-h-[42%]">
+        <div class="flex items-center justify-between mb-1.5">
+          <h2 class="text-[11px] font-mono-tac font-bold uppercase tracking-wider text-slate-400">Tactical Inspector</h2>
+          <span id="inspector-owner-badge" class="text-[10px] font-mono-tac px-2 py-0.5 rounded bg-slate-800 text-slate-400">NO SELECTION</span>
+        </div>
+        <div id="inspector-content" class="bg-[#162033] border border-slate-700/70 rounded-xl p-2.5 text-xs text-slate-300"></div>
+      </div>
+
+      <!-- Secret Order Queue Panel -->
+      <div class="p-3 border-b border-slate-800 flex-shrink-0 max-h-[27%] flex flex-col">
+        <div class="flex items-center justify-between mb-1.5">
+          <h2 class="text-[11px] font-mono-tac font-bold uppercase tracking-wider text-amber-400">
+            Secret Orders (<span id="queue-count">0</span>)
+          </h2>
+          <div class="flex items-center gap-1.5">
+            <button id="btn-undo-order" class="tac-btn px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-[10px] font-mono-tac font-bold">↩ Undo</button>
+            <button id="btn-clear-orders" class="tac-btn px-2 py-0.5 rounded bg-slate-800 hover:bg-rose-900/70 text-rose-300 text-[10px] font-mono-tac font-bold">✕ Clear</button>
+          </div>
+        </div>
+        <div id="order-queue-list" class="overflow-y-auto space-y-1 text-[11px] font-mono-tac pr-1"></div>
+      </div>
+
+      <!-- Resolution & Dice Log -->
+      <div class="flex-1 flex flex-col min-h-0 p-3">
+        <div class="flex items-center justify-between mb-1.5">
+          <h2 class="text-[11px] font-mono-tac font-bold uppercase tracking-wider text-slate-400">Resolution &amp; Dice Log</h2>
+          <button id="btn-clear-log" class="text-[10px] font-mono-tac text-slate-500 hover:text-slate-300">CLEAR</button>
+        </div>
+        <div id="combat-log" class="flex-1 overflow-y-auto space-y-1.5 pr-1 text-[11px] font-mono-tac"></div>
+      </div>
+    </aside>
+  </main>
+
+  <!-- CUSTOM MAP LOADER MODAL -->
+  <div id="map-upload-modal" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6">
+    <div class="bg-[#111827] border border-teal-500/50 rounded-2xl max-w-2xl w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+      <div class="px-5 py-3.5 bg-slate-900 border-b border-slate-700 flex items-center justify-between">
+        <div>
+          <h3 class="text-base font-extrabold text-slate-100 tracking-wide uppercase flex items-center gap-2">
+            <span>🗺️</span> Custom Map Loader
+          </h3>
+          <p class="text-[11px] font-mono-tac text-teal-400">Compatible with 3MF to 2D Game Map Converter (.txt, .json, .csv)</p>
+        </div>
+        <button id="btn-close-map-modal" class="tac-btn px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold">✕ CLOSE</button>
+      </div>
+
+      <div class="p-5 overflow-y-auto space-y-4 text-xs text-slate-300">
+        <!-- Warning Notice -->
+        <div class="flex items-start gap-2.5 bg-amber-950/60 border border-amber-500/40 rounded-xl px-3.5 py-2.5 text-amber-200">
+          <span class="text-base leading-none mt-0.5">⚠️</span>
+          <div>
+            <strong class="text-amber-300">Campaign Reset Notice:</strong> Loading a custom map or resetting to the default map will reset the current match to the <strong>Deployment / Setup Phase</strong> so both players can place their Main Bases on the new terrain.
+          </div>
+        </div>
+
+        <!-- Drag & Drop / Browse File Zone -->
+        <div
+          id="map-drop-zone"
+          tabindex="0"
+          role="button"
+          class="group border-2 border-dashed border-slate-600 hover:border-teal-400 bg-slate-950/70 hover:bg-teal-950/20 rounded-xl p-5 text-center cursor-pointer transition-all"
+        >
+          <input id="map-file-input" type="file" accept=".txt,.json,.csv" class="hidden" />
+          <div class="w-10 h-10 mx-auto mb-2 rounded-xl bg-slate-800 group-hover:bg-teal-500/20 flex items-center justify-center transition-colors">
+            <svg class="w-5 h-5 text-teal-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+            </svg>
+          </div>
+          <p class="text-sm font-semibold text-slate-100">Drop converted map file here or click to browse</p>
+          <p class="text-[11px] text-slate-400 mt-1 font-mono-tac">Supports Compact .txt (B:4:38 / B:42 / W,G,R,B), Full .json, and Detailed .csv</p>
+        </div>
+
+        <!-- Quick Presets Row -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+          <button id="btn-load-nyc-sample" type="button" class="tac-btn py-2.5 px-3 rounded-xl bg-gradient-to-b from-teal-600 to-teal-700 hover:from-teal-500 hover:to-teal-600 text-white font-bold text-xs flex items-center justify-center gap-1.5">
+            <span>🏙️</span> Load Sample NYC Converted Map (.txt)
+          </button>
+          <button id="btn-reset-default-map" type="button" class="tac-btn py-2.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs flex items-center justify-center gap-1.5">
+            <span>↺</span> Reset to Default 68"×44" Map
+          </button>
+        </div>
+
+        <!-- Paste Raw Text Area -->
+        <div class="space-y-2 pt-2 border-t border-slate-800">
+          <div class="flex items-center justify-between">
+            <label for="map-paste-textarea" class="font-semibold text-slate-200">Or Paste Compact Game Map (.txt) / JSON / CSV:</label>
+            <span class="text-[10px] font-mono-tac text-slate-500">Auto-detects format &amp; delimiter</span>
+          </div>
+          <textarea
+            id="map-paste-textarea"
+            rows="6"
+            placeholder="# WIDTH 60&#10;# HEIGHT 40&#10;# SOURCE my-terrain.3mf&#10;# PIN &quot;Midtown&quot; col=28 row=18 elev=45 latlon=40.7549,-73.9840&#10;# GRID_START&#10;W:0:0 G:10:0 R:10:0 B:10:35 ..."
+            class="w-full rounded-xl bg-slate-950 border border-slate-700 p-3 text-[11px] font-mono-tac text-slate-200 placeholder-slate-600 focus:outline-none focus:border-teal-500 select-text"
+          ></textarea>
+          <div class="flex justify-end">
+            <button id="btn-load-pasted-map" type="button" class="tac-btn px-4 py-2 rounded-lg bg-gradient-to-b from-sky-600 to-blue-700 hover:from-sky-500 hover:to-blue-600 text-white font-bold text-xs">
+              Load Pasted Map
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- HOTSEAT PRIVACY HANDOFF MODAL -->
+  <div id="handoff-modal" class="hidden fixed inset-0 z-50 bg-[#050914]/95 backdrop-blur-md flex items-center justify-center p-4">
+    <div class="bg-[#111827] border-2 border-slate-600 rounded-2xl max-w-md w-full p-6 text-center shadow-2xl">
+      <div class="w-14 h-14 mx-auto mb-3 rounded-2xl bg-slate-800 border border-slate-600 flex items-center justify-center text-3xl">🔒</div>
+      <h2 id="handoff-title" class="text-xl font-extrabold uppercase tracking-wider text-slate-100 mb-1.5">Orders Locked</h2>
+      <p id="handoff-subtitle" class="text-sm text-slate-300 mb-5">Pass the device to Player 2 (Red). Secret orders are hidden.</p>
+      <button id="btn-handoff-ready" class="tac-btn w-full py-3 rounded-xl bg-gradient-to-b from-rose-500 to-rose-700 hover:from-rose-400 hover:to-rose-600 text-white font-extrabold uppercase tracking-wider text-sm">
+        Player 2 Ready — Begin Planning
+      </button>
+    </div>
+  </div>
+
+  <!-- RULES REFERENCE MODAL (v2.1 MANUAL) -->
+  <div id="rules-modal" class="hidden fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6">
+    <div class="bg-[#111827] border border-slate-600 rounded-2xl max-w-3xl w-full max-h-[88vh] flex flex-col shadow-2xl overflow-hidden">
+      <div class="px-5 py-3.5 bg-slate-900 border-b border-slate-700 flex items-center justify-between">
+        <div>
+          <h3 class="text-base font-extrabold text-slate-100 tracking-wide uppercase">Production &amp; Logistics Manual (v2.1)</h3>
+          <p class="text-xs font-mono-tac text-sky-400">WEGO Simultaneous Turns, Auto-Engagement, Multi-Action &amp; Custom Maps</p>
+        </div>
+        <button id="btn-close-rules" class="tac-btn px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold">✕ CLOSE</button>
+      </div>
+      <div class="p-5 overflow-y-auto space-y-4 text-xs sm:text-sm text-slate-300 leading-relaxed">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div class="bg-slate-900/70 border border-slate-700/70 rounded-xl p-3">
+            <h4 class="font-bold text-amber-400 uppercase text-xs mb-1.5">WEGO Turn Structure (4 AP / Player)</h4>
+            <ul class="space-y-1 text-xs">
+              <li>• <strong>Planning Phase:</strong> P1 queues secret orders (4 AP), passes device via privacy screen, then P2 queues secret orders (4 AP).</li>
+              <li>• <strong>Multi-Action Chained Movement:</strong> Any unit may chain multiple <strong>1 AP</strong> move legs in a single turn (up to 4 AP). Road bonus (+1" Land) applies per leg.</li>
+              <li>• <strong>Step 1 — Movement &amp; Resupply:</strong> All units animate leg-by-leg simultaneously. Spent units touching or passing a friendly Base/Resupply Hub (0.62") along any leg reload immediately!</li>
+              <li>• <strong>Step 2 — Automatic Engagement (0 AP):</strong> All Loaded units automatically fire at the closest valid enemy in range. Mutual kills possible. Firing makes a unit <strong>SPENT</strong>.</li>
+              <li>• <strong>Step 3 — Missiles:</strong> Missiles (Atk 8) strike; Air Defense within 3" intercepts with D4.</li>
+              <li>• <strong>Step 4 — Logistics:</strong> Idle Resupply ticks (2 turns), production spawns, 4 AP construction/repairs complete, and +1 Missile restocks every 5 turns.</li>
+            </ul>
+          </div>
+          <div class="bg-slate-900/70 border border-slate-700/70 rounded-xl p-3">
+            <h4 class="font-bold text-emerald-400 uppercase text-xs mb-1.5">Action Point Costs &amp; 4× Scale Map Rules</h4>
+            <ul class="space-y-1 text-xs">
+              <li>• <strong>4× Battlefield Scale (68"×44"):</strong> Default map is 68"×44" and custom maps scale to a 68" longest edge. Outskirts deployment zone is <strong>6.0"</strong>. Unit speeds (1"–4") and engagement ranges (1"–3") remain at original inch values.</li>
+              <li>• <strong>Impassable Buildings (B):</strong> Land units cannot move onto or cut through Building (<code>B</code>) tiles, and structures cannot be built on them. Route around city blocks via Ground (<code>G</code>) and Road (<code>R</code>) corridors. Planes fly freely over buildings.</li>
+              <li>• <strong>Pan &amp; Zoom (1×–8×):</strong> Scroll wheel zooms centered on cursor; hold <strong>Space+Drag</strong>, Middle-Click, or toggle <strong>✋ Pan</strong> to navigate.</li>
+              <li>• <strong>Automatic Engagement:</strong> <strong>0 AP</strong> (Automatic in Step 2). <strong>Move / Missile:</strong> 1 AP. <strong>Produce:</strong> 2 AP. <strong>Construct / Hub / Repair:</strong> 4 AP.</li>
+              <li>• <strong>Victory:</strong> Destroy both enemy Original Main Bases simultaneously.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="bg-slate-900/70 border border-slate-700/70 rounded-xl p-3 overflow-x-auto">
+          <h4 class="font-bold text-sky-400 uppercase text-xs mb-2">Units &amp; Automatic Engagement Reference</h4>
+          <table class="w-full text-left text-xs font-mono-tac border-collapse">
+            <thead>
+              <tr class="border-b border-slate-700 text-slate-400">
+                <th class="py-1 pr-2">Unit</th>
+                <th class="py-1 px-2">Shape</th>
+                <th class="py-1 px-2">Spd</th>
+                <th class="py-1 px-2">HP</th>
+                <th class="py-1 px-2">Atk</th>
+                <th class="py-1 px-2">Auto-Rng</th>
+                <th class="py-1 px-2">CD</th>
+                <th class="py-1 pl-2">Rules</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-800">
+              <tr><td class="py-1 pr-2 text-slate-100">Infantry</td><td class="px-2">Square</td><td class="px-2">1"</td><td class="px-2">2</td><td class="px-2">2</td><td class="px-2">1"</td><td class="px-2">2t</td><td class="pl-2 text-slate-400">Cannot hit Heavy Veh/Air/Ship; converts to Resupply Hub</td></tr>
+              <tr><td class="py-1 pr-2 text-slate-100">SpecOps</td><td class="px-2">Egg</td><td class="px-2">2"</td><td class="px-2">4</td><td class="px-2">3</td><td class="px-2">1"</td><td class="px-2">3t</td><td class="pl-2 text-slate-400">Hits all land &amp; bases; repairs general ruins</td></tr>
+              <tr><td class="py-1 pr-2 text-slate-100">Light Veh</td><td class="px-2">Small Bead</td><td class="px-2">3"</td><td class="px-2">6</td><td class="px-2">4</td><td class="px-2">1"</td><td class="px-2">2t</td><td class="pl-2 text-slate-400">Fast all-purpose land unit</td></tr>
+              <tr><td class="py-1 pr-2 text-slate-100">Heavy Veh</td><td class="px-2">Big Bead</td><td class="px-2">2"</td><td class="px-2">8</td><td class="px-2">5</td><td class="px-2">1"</td><td class="px-2">3t</td><td class="pl-2 text-slate-400">Heavy armor; immune to standard Infantry</td></tr>
+              <tr><td class="py-1 pr-2 text-slate-100">Air Defense</td><td class="px-2">Beehive</td><td class="px-2">2"</td><td class="px-2">4</td><td class="px-2">4</td><td class="px-2">3"</td><td class="px-2">2t</td><td class="pl-2 text-slate-400">Auto-engages Planes &amp; intercepts Missiles (D4)</td></tr>
+              <tr><td class="py-1 pr-2 text-slate-100">Plane</td><td class="px-2">Small Heart</td><td class="px-2">4"</td><td class="px-2">6</td><td class="px-2">5</td><td class="px-2">3"</td><td class="px-2">4t</td><td class="pl-2 text-slate-400">Immune to land except Air Defense</td></tr>
+              <tr><td class="py-1 pr-2 text-slate-100">Ship</td><td class="px-2">Small Star</td><td class="px-2">3"</td><td class="px-2">6</td><td class="px-2">4</td><td class="px-2">3"</td><td class="px-2">4t</td><td class="pl-2 text-slate-400">Water only; auto-engages land &amp; water in 3"</td></tr>
+            </tbody>
+          </table>
+          <p class="text-[11px] text-amber-300 mt-2">Road Bonus: Land units starting on or moving along a marked highway or custom Road (R) receive +1" speed per leg.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- VICTORY MODAL -->
+  <div id="victory-modal" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+    <div class="bg-[#111827] border-2 border-amber-400/70 rounded-2xl max-w-md w-full p-6 text-center shadow-2xl">
+      <div class="text-5xl mb-3">🏆</div>
+      <h2 id="victory-title" class="text-2xl font-extrabold uppercase tracking-wider text-amber-300 mb-2">VICTORY!</h2>
+      <p id="victory-subtitle" class="text-sm text-slate-300 mb-5">Both enemy Original Main Bases have been neutralized.</p>
+      <div id="victory-stats" class="bg-slate-900/90 border border-slate-700 rounded-xl p-3 mb-5 text-xs font-mono-tac text-slate-300 space-y-1"></div>
+      <button id="btn-play-again" class="tac-btn w-full py-2.5 rounded-xl bg-gradient-to-b from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-extrabold uppercase tracking-wider">
+        Start New Campaign
+      </button>
+    </div>
+  </div>
+
+  <script>
+    /**
+     * ============================================================================
+     * TACTICAL MAP WAR GAME v2.1 — WEGO, AUTO-ENGAGEMENT & MULTI-ACTION
+     * With Full Custom Map Uploading (.txt, .json, .csv from 3MF-to-2D Converter)
+     * ============================================================================
+     */
+
+    // Mutable map inch dimensions (4x scaled default 68" x 44"; custom maps scale to 68" longest edge)
+    let MAP_W = 68;
+    let MAP_H = 44;
+
+    const MAX_AP = 4;
+    const EDGE_DEPLOY_IN = 6.0;
+    const ESTABLISHED_ZONE_IN = 3.0;
+    const RESUPPLY_TOUCH_IN = 0.62;
+    const RUIN_REPAIR_TURNS = 6;
+    const MISSILE_ATK = 8;
+    const MISSILE_RESTOCK_TURNS = 5;
+
+    const UNIT_DEFS = {
+      infantry: {
+        name: 'Infantry', shape: 'Square', category: 'land',
+        speed: 1, hp: 2, atk: 2, range: 1, prodCooldown: 2,
+        notes: 'Attacks Inf, SpecOps, Light Veh & Bases. Converts to Resupply Hub (4 AP when Secured).'
+      },
+      specops: {
+        name: 'Special Forces', shape: 'Egg', category: 'land',
+        speed: 2, hp: 4, atk: 3, range: 1, prodCooldown: 3,
+        notes: 'Elite land unit. Attacks all land units & bases. Can repair general ruins.'
+      },
+      light_veh: {
+        name: 'Light Vehicle', shape: 'Small Bead', category: 'land',
+        speed: 3, hp: 6, atk: 4, range: 1, prodCooldown: 2,
+        notes: 'Fast all-purpose land unit. Road bonus gives 4" speed per leg.'
+      },
+      heavy_veh: {
+        name: 'Heavy Vehicle', shape: 'Big Bead', category: 'land',
+        speed: 2, hp: 8, atk: 5, range: 1, prodCooldown: 3,
+        notes: 'Heavy armor. Immune to standard Infantry auto-engagements.'
+      },
+      air_def: {
+        name: 'Air Defense', shape: 'Beehive', category: 'land',
+        speed: 2, hp: 4, atk: 4, range: 3, prodCooldown: 2,
+        notes: 'Auto-engages Planes (3") & intercepts Missiles (D4 within 3").'
+      },
+      plane: {
+        name: 'Plane', shape: 'Small Heart', category: 'air',
+        speed: 4, hp: 6, atk: 5, range: 3, prodCooldown: 4,
+        notes: 'Fast air strike (3" range). Immune to land units except Air Defense.'
+      },
+      ship: {
+        name: 'Ship', shape: 'Small Star', category: 'sea',
+        speed: 3, hp: 6, atk: 4, range: 3, prodCooldown: 4,
+        notes: 'Water only. Auto-engages land and sea targets within 3".'
+      }
+    };
+
+    const STRUCTURE_DEFS = {
+      main_base: {
+        name: 'Main Base', shape: 'Shield', hp: 14, isBase: true, isResupply: true,
+        produces: ['infantry', 'specops', 'light_veh', 'heavy_veh', 'air_def'],
+        notes: 'Commander HQ. Immune to Missiles. Losing both Original Main Bases loses the match.'
+      },
+      major_base: {
+        name: 'Major Base', shape: 'Wheel', hp: 10, isBase: true, isResupply: true,
+        produces: ['infantry', 'specops', 'light_veh', 'heavy_veh', 'air_def'],
+        notes: 'Forward heavy production hub. Produces all land units & resupplies.'
+      },
+      minor_base: {
+        name: 'Minor Base', shape: 'Disc', hp: 8, isBase: true, isResupply: true,
+        produces: ['infantry', 'light_veh', 'air_def'],
+        notes: 'Light production outpost. Produces Inf, Light Veh, Air Defense & resupplies.'
+      },
+      port: {
+        name: 'Port', shape: 'Big Star', hp: 8, isBase: true, isResupply: true,
+        produces: ['ship'], needsWater: true,
+        notes: 'Naval yard. Must be built along coastline. Produces Ships (4t CD).'
+      },
+      air_base: {
+        name: 'Air Base', shape: 'Big Heart', hp: 6, isBase: true, isResupply: true,
+        produces: ['plane'],
+        notes: 'Airfield. Produces Planes (4t CD) & resupplies.'
+      },
+      resupply_hub: {
+        name: 'Resupply Hub', shape: 'Pot', hp: 3, isBase: false, isResupply: true,
+        produces: [],
+        notes: 'Forward logistics depot. Reloads Spent friendly units on contact/pass.'
+      }
+    };
+
+    // Default 68"x44" Built-in Terrain Geometry (4x scale of 17"x11")
+    const WATER_POLYS = [
+      [
+        { x: 24.8, y: 0.0 }, { x: 43.2, y: 0.0 }, { x: 42.0, y: 6.4 },
+        { x: 38.4, y: 10.8 }, { x: 29.6, y: 10.8 }, { x: 26.0, y: 6.0 }
+      ],
+      [
+        { x: 31.2, y: 9.6 }, { x: 36.8, y: 9.6 }, { x: 37.2, y: 34.4 }, { x: 30.8, y: 34.4 }
+      ],
+      [
+        { x: 29.2, y: 33.2 }, { x: 38.8, y: 33.2 }, { x: 43.6, y: 38.4 },
+        { x: 44.4, y: 44.0 }, { x: 23.6, y: 44.0 }, { x: 24.4, y: 38.0 }
+      ]
+    ];
+
+    const BRIDGES = [
+      { x: 29.8, y: 13.8, w: 8.4, h: 2.88 },
+      { x: 29.8, y: 27.4, w: 8.4, h: 2.88 }
+    ];
+
+    const ROADS = [
+      [{ x: 3.2, y: 10.4 }, { x: 18.0, y: 15.2 }, { x: 50.0, y: 15.2 }, { x: 64.8, y: 10.4 }],
+      [{ x: 3.2, y: 33.6 }, { x: 18.0, y: 28.8 }, { x: 50.0, y: 28.8 }, { x: 64.8, y: 33.6 }],
+      [{ x: 13.6, y: 4.8 }, { x: 18.0, y: 15.2 }, { x: 18.0, y: 28.8 }, { x: 13.6, y: 39.2 }],
+      [{ x: 54.4, y: 4.8 }, { x: 50.0, y: 15.2 }, { x: 50.0, y: 28.8 }, { x: 54.4, y: 39.2 }]
+    ];
+
+    // --- PROCEDURAL WEB AUDIO SFX ---
+    const SFX = {
+      enabled: true,
+      ctx: null,
+      ensure() {
+        if (!this.enabled) return null;
+        if (!this.ctx) {
+          const AC = window.AudioContext || window.webkitAudioContext;
+          if (AC) this.ctx = new AC();
+        }
+        if (this.ctx && this.ctx.state === 'suspended') {
+          this.ctx.resume().catch(() => {});
+        }
+        return this.ctx;
+      },
+      play(type) {
+        try {
+          const c = this.ensure();
+          if (!c) return;
+          const now = c.currentTime;
+          const osc = c.createOscillator();
+          const gain = c.createGain();
+          osc.connect(gain);
+          gain.connect(c.destination);
+
+          if (type === 'click') {
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(620, now);
+            osc.frequency.exponentialRampToValueAtTime(340, now + 0.06);
+            gain.gain.setValueAtTime(0.08, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
+            osc.start(now); osc.stop(now + 0.07);
+          } else if (type === 'move') {
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(220, now);
+            osc.frequency.exponentialRampToValueAtTime(330, now + 0.14);
+            gain.gain.setValueAtTime(0.07, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.16);
+            osc.start(now); osc.stop(now + 0.17);
+          } else if (type === 'fire') {
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(280, now);
+            osc.frequency.exponentialRampToValueAtTime(75, now + 0.18);
+            gain.gain.setValueAtTime(0.1, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.19);
+            osc.start(now); osc.stop(now + 0.2);
+          } else if (type === 'explode') {
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(140, now);
+            osc.frequency.exponentialRampToValueAtTime(32, now + 0.32);
+            gain.gain.setValueAtTime(0.16, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.34);
+            osc.start(now); osc.stop(now + 0.35);
+          } else if (type === 'miss') {
+            osc.type = 'square';
+            osc.frequency.setValueAtTime(190, now);
+            osc.frequency.setValueAtTime(150, now + 0.07);
+            gain.gain.setValueAtTime(0.06, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+            osc.start(now); osc.stop(now + 0.16);
+          } else if (type === 'lock') {
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(440, now);
+            osc.frequency.setValueAtTime(660, now + 0.07);
+            gain.gain.setValueAtTime(0.09, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+            osc.start(now); osc.stop(now + 0.21);
+          } else if (type === 'victory') {
+            [523, 659, 784, 1046].forEach((freq, i) => {
+              const o = c.createOscillator();
+              const g = c.createGain();
+              o.type = 'triangle';
+              o.connect(g); g.connect(c.destination);
+              o.frequency.setValueAtTime(freq, now + i * 0.11);
+              g.gain.setValueAtTime(0.11, now + i * 0.11);
+              g.gain.exponentialRampToValueAtTime(0.001, now + i * 0.11 + 0.28);
+              o.start(now + i * 0.11); o.stop(now + i * 0.11 + 0.3);
+            });
+          }
+        } catch (err) {}
+      }
+    };
+
+    // --- GAME STATE ---
+    let nextEntityId = 1;
+    let nextOrderId = 1;
+
+    const state = {
+      phase: 'SETUP', // 'SETUP' | 'PLANNING' | 'RESOLVING' | 'POST_RESOLUTION' | 'GAMEOVER'
+      setupStep: 0,   // 0: P1 Base 1, 1: P2 Base 1, 2: P1 Base 2, 3: P2 Base 2
+      turn: 1,
+      activePlayer: 1,
+      missiles: { 1: 6, 2: 6 },
+      orders: { 1: [], 2: [] },
+      entities: [],
+      ruins: [],
+      selectedId: null,
+      mode: 'IDLE',   // 'IDLE' | 'MOVE' | 'MISSILE' | 'DEPLOY_AD_ZONE'
+      pendingAdBaseId: null,
+      showZones: true,
+      showRanges: true,
+      showPins: true,
+      hoverMap: null,
+      effects: [],
+      stats: { kills: { 1: 0, 2: 0 }, missilesFired: { 1: 0, 2: 0 } },
+
+      // Camera Pan & Zoom (1x - 8x)
+      zoom: 1,
+      panX: 0,
+      panY: 0,
+      panToolActive: false,
+      isPanning: false,
+      spaceDown: false,
+      dragStartX: 0,
+      dragStartY: 0,
+      panStartX: 0,
+      panStartY: 0,
+      didDragPan: false,
+
+      // Custom Uploaded Map State (null = built-in 68"x44" map)
+      customMap: null
+    };
+
+    // --- CANVAS SETUP & CAMERA TRANSFORM ---
+    const canvas = document.getElementById('game-canvas');
+    const ctx = canvas.getContext('2d');
+    const wrapper = document.getElementById('canvas-wrapper');
+    let basePpi = 12;
+    let ppi = 12;
+    let offsetX = 24;
+    let offsetY = 24;
+
+    function updateCameraTransform() {
+      const rect = wrapper.getBoundingClientRect();
+      const pad = 26;
+      const availW = Math.max(120, rect.width - pad * 2);
+      const availH = Math.max(120, rect.height - pad * 2);
+      basePpi = Math.min(availW / MAP_W, availH / MAP_H);
+      ppi = basePpi * state.zoom;
+      offsetX = (rect.width - MAP_W * ppi) / 2 + state.panX;
+      offsetY = (rect.height - MAP_H * ppi) / 2 + state.panY;
+      const zr = document.getElementById('zoom-readout');
+      if (zr) zr.textContent = `${Math.round(state.zoom * 100)}%`;
+    }
+
+    function resizeCanvas() {
+      const rect = wrapper.getBoundingClientRect();
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width = Math.max(300, Math.floor(rect.width * dpr));
+      canvas.height = Math.max(240, Math.floor(rect.height * dpr));
+      canvas.style.width = `${rect.width}px`;
+      canvas.style.height = `${rect.height}px`;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      updateCameraTransform();
+    }
+
+    function resetCameraView() {
+      state.zoom = 1;
+      state.panX = 0;
+      state.panY = 0;
+      updateCameraTransform();
+    }
+
+    function zoomAtPoint(factor, clientX = null, clientY = null) {
+      const oldZoom = state.zoom;
+      const newZoom = Math.max(1, Math.min(8, oldZoom * factor));
+      if (Math.abs(newZoom - oldZoom) < 1e-4) return;
+
+      const rect = canvas.getBoundingClientRect();
+      const cx = clientX !== null ? (clientX - rect.left) : rect.width / 2;
+      const cy = clientY !== null ? (clientY - rect.top) : rect.height / 2;
+
+      const ratio = newZoom / oldZoom;
+      const centerX = rect.width / 2;
+      const centerY = rect.height / 2;
+
+      state.panX = (cx - centerX) - ((cx - centerX) - state.panX) * ratio;
+      state.panY = (cy - centerY) - ((cy - centerY) - state.panY) * ratio;
+      state.zoom = newZoom;
+
+      if (state.zoom <= 1.01) {
+        state.zoom = 1;
+        state.panX = 0;
+        state.panY = 0;
+      }
+      updateCameraTransform();
+    }
+
+    function toPxX(inX) { return offsetX + inX * ppi; }
+    function toPxY(inY) { return offsetY + inY * ppi; }
+    function toMapX(pxX) { return (pxX - offsetX) / ppi; }
+    function toMapY(pxY) { return (pxY - offsetY) / ppi; }
+
+    // =========================================================================
+    // CUSTOM MAP PARSER (.txt, .json, .csv) & OFFSCREEN TOPOGRAPHIC RENDERER
+    // =========================================================================
+    function sampleTopoColor(t) {
+      const stops = [
+        [0.00,  32,  98,  66],
+        [0.30,  62, 138,  82],
+        [0.60, 146, 162, 102],
+        [0.82, 152, 128,  98],
+        [1.00, 226, 232, 240],
+      ];
+      const clamped = Math.max(0, Math.min(1, t));
+      for (let i = 0; i < stops.length - 1; i++) {
+        const s0 = stops[i], s1 = stops[i + 1];
+        if (clamped >= s0[0] && clamped <= s1[0]) {
+          const f = (clamped - s0[0]) / (s1[0] - s0[0]);
+          return [
+            s0[1] + (s1[1] - s0[1]) * f,
+            s0[2] + (s1[2] - s0[2]) * f,
+            s0[3] + (s1[3] - s0[3]) * f,
+          ];
+        }
+      }
+      return [226, 232, 240];
+    }
+
+    function sampleBuildingHeat(t) {
+      const stops = [
+        [0.00, 180,  83,   9],
+        [0.35, 245, 158,  11],
+        [0.70, 249, 115,  22],
+        [1.00, 254, 240, 138],
+      ];
+      const clamped = Math.max(0, Math.min(1, t));
+      for (let i = 0; i < stops.length - 1; i++) {
+        const s0 = stops[i], s1 = stops[i + 1];
+        if (clamped >= s0[0] && clamped <= s1[0]) {
+          const f = (clamped - s0[0]) / (s1[0] - s0[0]);
+          return [
+            s0[1] + (s1[1] - s0[1]) * f,
+            s0[2] + (s1[2] - s0[2]) * f,
+            s0[3] + (s1[3] - s0[3]) * f,
+          ];
+        }
+      }
+      return [254, 240, 138];
+    }
+
+    function normalizeTileChar(ch) {
+      const u = String(ch || 'G').trim().toUpperCase().charAt(0);
+      if (u === 'W' || u === 'G' || u === 'R' || u === 'B') return u;
+      return 'G';
+    }
+
+    function buildCustomMapOffscreen(mapObj) {
+      const { cols, rows, types, totalElev, bldgHeight, minElev, maxElev, maxBldg } = mapObj;
+      const zRange = Math.max(1e-5, maxElev - minElev);
+      const bRange = Math.max(1e-5, maxBldg);
+
+      const off = document.createElement('canvas');
+      off.width = cols;
+      off.height = rows;
+      const octx = off.getContext('2d');
+      const imgData = octx.createImageData(cols, rows);
+      const data = imgData.data;
+
+      // Hillshade vector
+      const lx = -0.58, ly = -0.58, lz = 0.57;
+      const reliefScale = (Math.max(cols, rows) / zRange) * 0.22;
+
+      for (let r = 0; r < rows; r++) {
+        const ro = r * cols;
+        for (let c = 0; c < cols; c++) {
+          const idx = ro + c;
+          const p = idx * 4;
+          const t = types[idx];
+          const z = totalElev[idx];
+          const normZ = Math.max(0, Math.min(1, (z - minElev) / zRange));
+
+          // Hillshade from neighboring elevations
+          const zL = totalElev[ro + Math.max(0, c - 1)];
+          const zR = totalElev[ro + Math.min(cols - 1, c + 1)];
+          const zU = totalElev[Math.max(0, r - 1) * cols + c];
+          const zD = totalElev[Math.min(rows - 1, r + 1) * cols + c];
+          const dzdx = (zR - zL) * reliefScale;
+          const dzdy = (zD - zU) * reliefScale;
+          const invLen = 1 / Math.hypot(dzdx, dzdy, 1);
+          const shade = Math.max(0.56, Math.min(1.24, (-dzdx * lx - dzdy * ly + lz) * invLen * 1.15));
+
+          let R = 0, G = 0, B = 0;
+          if (t === 'W') {
+            const depthF = Math.min(1, normZ * 2.5);
+            R = 12 + depthF * 20;
+            G = 66 + depthF * 74;
+            B = 138 + depthF * 76;
+          } else if (t === 'B') {
+            const bt = Math.min(1, (bldgHeight[idx] > 0 ? bldgHeight[idx] / bRange : normZ));
+            const [br, bg, bb] = sampleBuildingHeat(bt);
+            // Distinct architectural border where a B tile meets walkable G/R or W
+            const isEdge =
+              (c > 0 && types[idx - 1] !== 'B') ||
+              (c < cols - 1 && types[idx + 1] !== 'B') ||
+              (r > 0 && types[idx - cols] !== 'B') ||
+              (r < rows - 1 && types[idx + cols] !== 'B');
+            if (isEdge) {
+              R = Math.max(25, br * 0.48);
+              G = Math.max(18, bg * 0.42);
+              B = Math.max(15, bb * 0.38);
+            } else {
+              R = Math.min(255, br * shade * 0.96);
+              G = Math.min(255, bg * shade * 0.92);
+              B = Math.min(255, bb * shade * 0.88);
+            }
+          } else if (t === 'R') {
+            R = Math.min(255, 108 * shade);
+            G = Math.min(255, 118 * shade);
+            B = Math.min(255, 134 * shade);
+          } else {
+            const [tr, tg, tb] = sampleTopoColor(normZ);
+            R = Math.min(255, tr * shade * 0.9);
+            G = Math.min(255, tg * shade * 0.9);
+            B = Math.min(255, tb * shade * 0.9);
+          }
+
+          data[p] = R;
+          data[p + 1] = G;
+          data[p + 2] = B;
+          data[p + 3] = 255;
+        }
+      }
+
+      octx.putImageData(imgData, 0, 0);
+      mapObj.offscreenCanvas = off;
+    }
+
+    function finalizeCustomMap(name, cols, rows, types, totalElev, groundElev, bldgHeight, pins) {
+      if (!Number.isFinite(cols) || !Number.isFinite(rows) || cols < 8 || rows < 8) {
+        throw new Error(`Invalid map dimensions (${cols}×${rows}). Minimum grid size is 8×8.`);
+      }
+      const total = cols * rows;
+      if (types.length !== total) {
+        throw new Error(`Grid cell mismatch: expected ${total} cells (${cols}×${rows}), got ${types.length}.`);
+      }
+
+      let minElev = Infinity, maxElev = -Infinity, maxBldg = 0;
+      const counts = { W: 0, G: 0, R: 0, B: 0 };
+      for (let i = 0; i < total; i++) {
+        const t = types[i];
+        if (counts[t] !== undefined) counts[t]++;
+        if (totalElev[i] < minElev) minElev = totalElev[i];
+        if (totalElev[i] > maxElev) maxElev = totalElev[i];
+        if (bldgHeight[i] > maxBldg) maxBldg = bldgHeight[i];
+      }
+      if (!Number.isFinite(minElev)) { minElev = 0; maxElev = 100; }
+
+      const validPins = (pins || []).filter(p =>
+        p && typeof p.name === 'string' &&
+        Number.isFinite(p.col) && Number.isFinite(p.row) &&
+        p.col >= 0 && p.col < cols && p.row >= 0 && p.row < rows
+      );
+
+      const mapObj = {
+        name: name || 'Custom Map',
+        cols,
+        rows,
+        types,
+        totalElev,
+        groundElev,
+        bldgHeight,
+        minElev,
+        maxElev,
+        maxBldg,
+        pins: validPins,
+        counts,
+        offscreenCanvas: null
+      };
+      buildCustomMapOffscreen(mapObj);
+      return mapObj;
+    }
+
+    function parseCompactTxtMap(text, fallbackName = 'custom-map.txt') {
+      const rawLines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+      let metaWidth = null;
+      let metaHeight = null;
+      let metaSource = fallbackName;
+      const pins = [];
+      const dataLines = [];
+      let seenGridStart = false;
+
+      for (const raw of rawLines) {
+        const line = raw.trim();
+        if (!line) continue;
+
+        if (line.startsWith('#')) {
+          const wMatch = /^#\s*WIDTH\s+(\d+)/i.exec(line);
+          if (wMatch) { metaWidth = parseInt(wMatch[1], 10); continue; }
+
+          const hMatch = /^#\s*HEIGHT\s+(\d+)/i.exec(line);
+          if (hMatch) { metaHeight = parseInt(hMatch[1], 10); continue; }
+
+          const sMatch = /^#\s*SOURCE\s+(.+)/i.exec(line);
+          if (sMatch) { metaSource = sMatch[1].trim(); continue; }
+
+          const pinMatch = /^#\s*PIN\s+"([^"]+)"\s+col=(\d+)\s+row=(\d+)/i.exec(line);
+          if (pinMatch) {
+            pins.push({
+              name: pinMatch[1],
+              col: parseInt(pinMatch[2], 10),
+              row: parseInt(pinMatch[3], 10)
+            });
+            continue;
+          }
+
+          if (/^#\s*GRID_START/i.test(line)) {
+            seenGridStart = true;
+          }
+          continue;
+        }
+
+        // Ignore truncated preview footers if pasted from preview box
+        if (line.startsWith('...')) continue;
+        dataLines.push(line);
+      }
+
+      if (dataLines.length < 8) {
+        throw new Error('Not enough grid rows found in Compact .txt map (need at least 8 rows).');
+      }
+
+      // Auto-detect delimiter from first data row
+      const sample = dataLines[0];
+      let splitFn;
+      if (sample.includes('\t')) {
+        splitFn = (l) => l.split('\t').map(s => s.trim()).filter(Boolean);
+      } else if (sample.includes(',')) {
+        splitFn = (l) => l.split(',').map(s => s.trim()).filter(Boolean);
+      } else {
+        splitFn = (l) => l.split(/\s+/).filter(Boolean);
+      }
+
+      const firstTokens = splitFn(sample);
+      const cols = metaWidth && metaWidth === firstTokens.length ? metaWidth : firstTokens.length;
+      const rows = dataLines.length;
+      const total = cols * rows;
+
+      const types = new Array(total);
+      const totalElev = new Float32Array(total);
+      const groundElev = new Float32Array(total);
+      const bldgHeight = new Float32Array(total);
+
+      for (let r = 0; r < rows; r++) {
+        const tokens = splitFn(dataLines[r]);
+        const ro = r * cols;
+        for (let c = 0; c < cols; c++) {
+          const tok = tokens[c] || 'G:0';
+          const parts = tok.split(':');
+          const t = normalizeTileChar(parts[0]);
+          let g = 0, b = 0, z = 0;
+          if (parts.length >= 3) {
+            // Type:GroundElev:BldgHeight (e.g., B:4:38)
+            g = parseFloat(parts[1]) || 0;
+            b = parseFloat(parts[2]) || 0;
+            z = g + b;
+          } else if (parts.length === 2) {
+            // Type:TotalElev (e.g., B:42)
+            z = parseFloat(parts[1]) || 0;
+            g = t === 'B' ? Math.max(0, z * 0.25) : z;
+            b = t === 'B' ? Math.max(0, z - g) : 0;
+          } else {
+            // Single-letter W / G / R / B
+            g = t === 'W' ? 0 : 10;
+            b = t === 'B' ? 25 : 0;
+            z = g + b;
+          }
+          types[ro + c] = t;
+          groundElev[ro + c] = g;
+          bldgHeight[ro + c] = b;
+          totalElev[ro + c] = z;
+        }
+      }
+
+      return finalizeCustomMap(metaSource, cols, rows, types, totalElev, groundElev, bldgHeight, pins);
+    }
+
+    function parseJsonMap(text, fallbackName = 'custom-map.json') {
+      const obj = JSON.parse(text);
+      const cols = parseInt(obj.width, 10);
+      const rows = parseInt(obj.height, 10);
+      if (!cols || !rows || !obj.layers || !Array.isArray(obj.layers.types)) {
+        throw new Error('JSON file is missing required width, height, or layers.types fields.');
+      }
+
+      const total = cols * rows;
+      const types = new Array(total);
+      const totalElev = new Float32Array(total);
+      const groundElev = new Float32Array(total);
+      const bldgHeight = new Float32Array(total);
+
+      const typeRows = obj.layers.types;
+      const zRows = obj.layers.totalElev || [];
+      const gRows = obj.layers.groundElev || [];
+      const bRows = obj.layers.bldgHeight || [];
+
+      for (let r = 0; r < rows; r++) {
+        const ro = r * cols;
+        const tRow = typeRows[r] || '';
+        const zRow = zRows[r] || [];
+        const gRow = gRows[r] || [];
+        const bRow = bRows[r] || [];
+
+        for (let c = 0; c < cols; c++) {
+          const ch = typeof tRow === 'string' ? tRow.charAt(c) : tRow[c];
+          const t = normalizeTileChar(ch);
+          const g = Number(gRow[c]) || 0;
+          const b = Number(bRow[c]) || 0;
+          const z = zRow[c] !== undefined ? (Number(zRow[c]) || 0) : (g + b);
+          types[ro + c] = t;
+          groundElev[ro + c] = g;
+          bldgHeight[ro + c] = b;
+          totalElev[ro + c] = z;
+        }
+      }
+
+      const pins = (obj.locations || []).map(loc => ({
+        name: String(loc.name || 'Pin'),
+        col: parseInt(loc.col, 10),
+        row: parseInt(loc.row, 10)
+      }));
+
+      return finalizeCustomMap(obj.source || fallbackName, cols, rows, types, totalElev, groundElev, bldgHeight, pins);
+    }
+
+    function parseCsvMap(text, fallbackName = 'custom-map.csv') {
+      const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('#'));
+      if (lines.length < 2) {
+        throw new Error('CSV map file has no data rows.');
+      }
+
+      const header = lines[0].toLowerCase().split(',').map(s => s.trim());
+      const iCol = header.indexOf('col');
+      const iRow = header.indexOf('row');
+      const iType = header.indexOf('type');
+      const iTotal = header.indexOf('total_elev');
+      const iGround = header.indexOf('ground_elev');
+      const iBldg = header.indexOf('bldg_height');
+
+      if (iCol < 0 || iRow < 0 || iType < 0) {
+        throw new Error('CSV header must include col,row,type columns.');
+      }
+
+      let maxCol = -1, maxRow = -1;
+      const parsed = [];
+      for (let i = 1; i < lines.length; i++) {
+        const parts = lines[i].split(',');
+        if (parts.length < 3) continue;
+        const c = parseInt(parts[iCol], 10);
+        const r = parseInt(parts[iRow], 10);
+        if (Number.isNaN(c) || Number.isNaN(r)) continue;
+        if (c > maxCol) maxCol = c;
+        if (r > maxRow) maxRow = r;
+        const t = normalizeTileChar(parts[iType]);
+        const z = iTotal >= 0 ? (parseFloat(parts[iTotal]) || 0) : 0;
+        const g = iGround >= 0 ? (parseFloat(parts[iGround]) || 0) : z;
+        const b = iBldg >= 0 ? (parseFloat(parts[iBldg]) || 0) : 0;
+        parsed.push({ c, r, t, z, g, b });
+      }
+
+      const cols = maxCol + 1;
+      const rows = maxRow + 1;
+      const total = cols * rows;
+      const types = new Array(total).fill('G');
+      const totalElev = new Float32Array(total);
+      const groundElev = new Float32Array(total);
+      const bldgHeight = new Float32Array(total);
+
+      for (const item of parsed) {
+        const idx = item.r * cols + item.c;
+        types[idx] = item.t;
+        totalElev[idx] = item.z;
+        groundElev[idx] = item.g;
+        bldgHeight[idx] = item.b;
+      }
+
+      return finalizeCustomMap(fallbackName, cols, rows, types, totalElev, groundElev, bldgHeight, []);
+    }
+
+    function parseAnyMapText(text, fileName = 'pasted-map.txt') {
+      const trimmed = (text || '').trim();
+      if (!trimmed) throw new Error('Map text is empty.');
+
+      const lowerName = (fileName || '').toLowerCase();
+      if (lowerName.endsWith('.json') || trimmed.startsWith('{')) {
+        return parseJsonMap(trimmed, fileName);
+      }
+      if (lowerName.endsWith('.csv') || /^col\s*,\s*row\s*,\s*type/i.test(trimmed)) {
+        return parseCsvMap(trimmed, fileName);
+      }
+      return parseCompactTxtMap(trimmed, fileName);
+    }
+
+    /**
+     * Generates a rich, authentic Compact Game Map (.txt) representing NYC Manhattan,
+     * Hudson & East Rivers, Bridges/Roads, Financial District & Midtown Skyscrapers,
+     * Central Park, and 4 # PIN landmarks — then parses it via parseCompactTxtMap().
+     */
+    function generateSampleNYCConvertedTxt() {
+      const cols = 70;
+      const rows = 100;
+      const lines = [
+        `# WIDTH ${cols}`,
+        `# HEIGHT ${rows}`,
+        `# SOURCE nyc-manhattan-sample.3mf`,
+        `# ELEV_SCALE 0-99`,
+        `# CELL_FORMAT Type:GroundElev:BldgHeight`,
+        `# LEGEND W=Water, G=Ground/Park, R=Road, B=Building`,
+        `# MODEL_BOUNDS X:[0.00,140.00] Y:[0.00,200.00] Z:[0.60,44.00]`,
+        `# GEO_BOUNDS NW:[40.783,-74.022] SE:[40.698,-73.952]`,
+        `# TILE_SCALE 84.10m_x_94.60m_per_tile`,
+        `# LOCATIONS 4`,
+        `# PIN "Central Park" col=33 row=18 elev=12 latlon=40.771200,-73.974200`,
+        `# PIN "Midtown" col=32 row=41 elev=85 latlon=40.754900,-73.984000`,
+        `# PIN "Brooklyn Bridge" col=43 row=80 elev=11 latlon=40.706100,-73.996900`,
+        `# PIN "Battery Park" col=28 row=87 elev=8 latlon=40.703300,-74.017000`,
+        `# GRID_START`
+      ];
+
+      let seed = 918273;
+      function rand() {
+        seed = (seed * 1664525 + 1013904223) >>> 0;
+        return seed / 4294967296;
+      }
+
+      for (let r = 0; r < rows; r++) {
+        const y = (1 - (r + 0.5) / rows) * 200; // north = 200, south = 0
+        const rowTokens = new Array(cols);
+
+        for (let c = 0; c < cols; c++) {
+          const x = ((c + 0.5) / cols) * 140;
+
+          // Landmass shapes
+          const mCenter = 58 + (y - 30) * 0.08;
+          const mHalfW = y < 42 ? 24 * Math.pow(Math.max(0, (y - 20) / 22), 0.72) : 24.5;
+          const mWest = mCenter - mHalfW + 2.0 * Math.sin(y * 0.045);
+          const mEast = mCenter + mHalfW + 2.8 * Math.cos(y * 0.038);
+          const inManh = x >= mWest && x <= mEast && y >= 20;
+
+          const bkShore = 98 + (y - 30) * 0.12 + 4.0 * Math.sin(y * 0.05 + 1.1);
+          const inBkln = x >= bkShore && y >= 14;
+
+          const njShore = 17 + (y - 30) * 0.06 + 2.2 * Math.sin(y * 0.06);
+          const inNJ = x <= njShore && y >= 24;
+
+          const inGov = Math.hypot((x - 58) / 8.5, (y - 11) / 5.5) <= 1.0;
+
+          // East River Bridges & Hudson Crossing
+          const onBridge =
+            (y >= 38 && y <= 41.5 && x >= 68 && x <= 105) || // Brooklyn Bridge
+            (y >= 47 && y <= 50.5 && x >= 72 && x <= 107) || // Manhattan Bridge
+            (y >= 66 && y <= 69.5 && x >= 80 && x <= 113) || // Williamsburg Bridge
+            (y >= 112 && y <= 115.5 && x >= 12 && x <= 44);  // Lincoln Tunnel / West Crossing
+
+          if (onBridge) {
+            rowTokens[c] = 'R:10:0';
+            continue;
+          }
+
+          if (!inManh && !inBkln && !inNJ && !inGov) {
+            rowTokens[c] = 'W:2:0';
+            continue;
+          }
+
+          const gElev = Math.round(7 + (y / 200) * 6 + Math.sin(x * 0.09) * 1.5);
+
+          // Central Park & Battery Park
+          const inCentralPark = x > 55 && x < 75 && y > 144 && y < 188;
+          const inBatteryPark = inManh && y < 29 && x < 63;
+          if (inCentralPark || inBatteryPark || inGov) {
+            rowTokens[c] = `G:${gElev}:0`;
+            continue;
+          }
+
+          // Major Avenues & Cross-Streets (Road corridors granting +1" bonus)
+          const isAve = (c % 6 === 0);
+          const isStreet = (r % 7 === 0);
+          if (isAve || isStreet) {
+            rowTokens[c] = `R:${gElev}:0`;
+            continue;
+          }
+
+          // Urban Buildings with realistic Midtown / Financial District heights
+          const dFiDi = Math.hypot((x - 57) / 14, (y - 40) / 14);
+          const dMidtown = Math.hypot((x - 64) / 17, (y - 122) / 19);
+          const dBklnDT = Math.hypot((x - 112) / 15, (y - 40) / 15);
+
+          let bH = 6 + rand() * 8;
+          if (inManh) {
+            bH += 56 * Math.exp(-(dFiDi * dFiDi)) * (0.65 + rand() * 0.65);
+            bH += 64 * Math.exp(-(dMidtown * dMidtown)) * (0.65 + rand() * 0.7);
+          } else if (inBkln) {
+            bH += 24 * Math.exp(-(dBklnDT * dBklnDT)) * (0.5 + rand() * 0.7);
+          }
+
+          // Parks/yards scattered on NJ/Brooklyn outer edges
+          if ((inNJ || inBkln) && rand() < 0.32) {
+            rowTokens[c] = `G:${gElev}:0`;
+          } else {
+            rowTokens[c] = `B:${gElev}:${Math.min(88, Math.round(bH))}`;
+          }
+        }
+        lines.push(rowTokens.join(' '));
+      }
+
+      return lines.join('\n');
+    }
+
+    function applyCustomMap(mapObj) {
+      state.customMap = mapObj;
+      state.showPins = true;
+
+      // 4x Aspect-True Inch Scaling: longest edge = 68", shortest edge >= 28"
+      if (mapObj.cols >= mapObj.rows) {
+        MAP_W = 68;
+        MAP_H = Math.max(28, Number((68 * (mapObj.rows / mapObj.cols)).toFixed(2)));
+      } else {
+        MAP_H = 68;
+        MAP_W = Math.max(28, Number((68 * (mapObj.cols / mapObj.rows)).toFixed(2)));
+      }
+
+      document.getElementById('hud-map-scale-sub').textContent =
+        `v2.1 • 4× CUSTOM MAP (${MAP_W.toFixed(1)}"×${MAP_H.toFixed(1)}", ${mapObj.cols}×${mapObj.rows} GRID)`;
+      document.getElementById('tel-map-name').textContent = `${mapObj.name} (${mapObj.cols}×${mapObj.rows})`;
+      document.getElementById('tel-elev-wrap').classList.remove('hidden');
+
+      const pinBtn = document.getElementById('btn-toggle-pins');
+      if (mapObj.pins.length > 0) {
+        pinBtn.classList.remove('hidden');
+        pinBtn.textContent = 'Pins: ON';
+      } else {
+        pinBtn.classList.add('hidden');
+      }
+
+      resetCampaign(false);
+      resetCameraView();
+      resizeCanvas();
+
+      const c = mapObj.counts;
+      const summary = `Loaded "${mapObj.name}" (${mapObj.cols}×${mapObj.rows} → ${MAP_W.toFixed(1)}"×${MAP_H.toFixed(1)}") • W:${c.W} G:${c.G} R:${c.R} B:${c.B} (Impassable) • ${mapObj.pins.length} Pin(s)`;
+      showToast(summary, 'success');
+      addLog(`🗺️ <strong>CUSTOM MAP LOADED:</strong> ${summary}`, 'emerald');
+    }
+
+    function resetToDefaultMap() {
+      state.customMap = null;
+      MAP_W = 68;
+      MAP_H = 44;
+      document.getElementById('hud-map-scale-sub').textContent =
+        'v2.1 • 4× SCALE WEGO, AUTO-ENGAGE & MULTI-ACTION (68"×44")';
+      document.getElementById('tel-map-name').textContent = 'Default 68"×44"';
+      document.getElementById('tel-elev-wrap').classList.add('hidden');
+      document.getElementById('btn-toggle-pins').classList.add('hidden');
+
+      resetCampaign(false);
+      resetCameraView();
+      resizeCanvas();
+      showToast('Restored Default 68"×44" Tactical Map.', 'info');
+      addLog('🗺️ Restored Default 68"×44" Tactical Map.', 'amber');
+    }
+
+    // --- GEOMETRY & TERRAIN HELPERS (INTEGRATED WITH CUSTOM MAP & IMPASSABLE BUILDINGS) ---
+    function distIn(x1, y1, x2, y2) {
+      return Math.hypot(x2 - x1, y2 - y1);
+    }
+
+    function pointInPoly(x, y, poly) {
+      let inside = false;
+      for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+        const xi = poly[i].x, yi = poly[i].y;
+        const xj = poly[j].x, yj = poly[j].y;
+        const intersect = ((yi > y) !== (yj > y)) &&
+          (x < (xj - xi) * (y - yi) / ((yj - yi) || 1e-9) + xi);
+        if (intersect) inside = !inside;
+      }
+      return inside;
+    }
+
+    function getCustomCellAt(x, y) {
+      const cm = state.customMap;
+      if (!cm) return null;
+      const col = Math.max(0, Math.min(cm.cols - 1, Math.floor((x / MAP_W) * cm.cols)));
+      const row = Math.max(0, Math.min(cm.rows - 1, Math.floor((y / MAP_H) * cm.rows)));
+      const idx = row * cm.cols + col;
+      return {
+        col,
+        row,
+        idx,
+        type: cm.types[idx],
+        totalElev: cm.totalElev[idx],
+        groundElev: cm.groundElev[idx],
+        bldgHeight: cm.bldgHeight[idx]
+      };
+    }
+
+    function isPointInWater(x, y) {
+      if (state.customMap) {
+        const cell = getCustomCellAt(x, y);
+        return cell ? cell.type === 'W' : false;
+      }
+      for (const poly of WATER_POLYS) {
+        if (pointInPoly(x, y, poly)) return true;
+      }
+      return false;
+    }
+
+    function isBuildingAt(x, y) {
+      if (!state.customMap) return false;
+      const cell = getCustomCellAt(x, y);
+      return cell ? cell.type === 'B' : false;
+    }
+
+    function isPointOnBridge(x, y) {
+      if (state.customMap) return false;
+      for (const b of BRIDGES) {
+        if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) return true;
+      }
+      return false;
+    }
+
+    function isLandForUnit(x, y) {
+      if (state.customMap) {
+        const cell = getCustomCellAt(x, y);
+        return cell ? (cell.type !== 'W' && cell.type !== 'B') : false;
+      }
+      if (isPointOnBridge(x, y)) return true;
+      return !isPointInWater(x, y);
+    }
+
+    function isLandForBase(x, y) {
+      if (state.customMap) {
+        const cell = getCustomCellAt(x, y);
+        return cell ? (cell.type !== 'W' && cell.type !== 'B') : false;
+      }
+      return !isPointInWater(x, y);
+    }
+
+    /**
+     * Fine-grained segment raycast for land units.
+     * Detects Building (B) collisions and unbridged Water (W) crossings along the entire leg.
+     */
+    function traceLandPath(x1, y1, x2, y2) {
+      const dist = distIn(x1, y1, x2, y2);
+      const steps = Math.max(24, Math.ceil(dist / 0.08));
+      for (let i = 1; i <= steps; i++) {
+        const t = i / steps;
+        const sx = x1 + (x2 - x1) * t;
+        const sy = y1 + (y2 - y1) * t;
+        if (isBuildingAt(sx, sy)) {
+          return { blocked: true, reason: 'BUILDING', x: sx, y: sy };
+        }
+        if (!isLandForUnit(sx, sy)) {
+          return { blocked: true, reason: 'WATER', x: sx, y: sy };
+        }
+      }
+      return { blocked: false, reason: null, x: x2, y: y2 };
+    }
+
+    function pathHitsBuilding(x1, y1, x2, y2) {
+      const res = traceLandPath(x1, y1, x2, y2);
+      return res.blocked && res.reason === 'BUILDING' ? res : null;
+    }
+
+    function traceSeaPath(x1, y1, x2, y2) {
+      const dist = distIn(x1, y1, x2, y2);
+      const steps = Math.max(20, Math.ceil(dist / 0.1));
+      for (let i = 1; i <= steps; i++) {
+        const t = i / steps;
+        const sx = x1 + (x2 - x1) * t;
+        const sy = y1 + (y2 - y1) * t;
+        if (!isWaterForShip(sx, sy)) {
+          return { blocked: true, reason: isBuildingAt(sx, sy) ? 'BUILDING' : 'LAND', x: sx, y: sy };
+        }
+      }
+      return { blocked: false, reason: null, x: x2, y: y2 };
+    }
+
+    function isWaterForShip(x, y) {
+      return isPointInWater(x, y);
+    }
+
+    function isNearWater(x, y, radius = 0.85) {
+      if (isPointInWater(x, y)) return true;
+      for (let a = 0; a < 12; a++) {
+        const ang = (a / 12) * Math.PI * 2;
+        const sx = Math.max(0.05, Math.min(MAP_W - 0.05, x + Math.cos(ang) * radius));
+        const sy = Math.max(0.05, Math.min(MAP_H - 0.05, y + Math.sin(ang) * radius));
+        if (isPointInWater(sx, sy)) return true;
+      }
+      return false;
+    }
+
+    function distToSegment(px, py, x1, y1, x2, y2) {
+      const dx = x2 - x1, dy = y2 - y1;
+      const lenSq = dx * dx + dy * dy;
+      if (lenSq === 0) return Math.hypot(px - x1, py - y1);
+      const t = Math.max(0, Math.min(1, ((px - x1) * dx + (py - y1) * dy) / lenSq));
+      return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
+    }
+
+    function isOnRoad(x, y, tolerance = 0.65) {
+      if (state.customMap) {
+        const cm = state.customMap;
+        const cell = getCustomCellAt(x, y);
+        if (!cell) return false;
+        if (cell.type === 'R') return true;
+        // Check immediate 8-neighbors so narrow 1-tile custom roads reliably trigger the +1" bonus
+        for (let dr = -1; dr <= 1; dr++) {
+          for (let dc = -1; dc <= 1; dc++) {
+            const nr = cell.row + dr;
+            const nc = cell.col + dc;
+            if (nr >= 0 && nr < cm.rows && nc >= 0 && nc < cm.cols) {
+              if (cm.types[nr * cm.cols + nc] === 'R') return true;
+            }
+          }
+        }
+        return false;
+      }
+      for (const road of ROADS) {
+        for (let i = 0; i < road.length - 1; i++) {
+          if (distToSegment(x, y, road[i].x, road[i].y, road[i + 1].x, road[i + 1].y) <= tolerance) {
+            return true;
+          }
+        }
+      }
+      return false;
+    }
+
+    function segmentTouchesRoad(x1, y1, x2, y2) {
+      const steps = state.customMap ? 10 : 6;
+      for (let i = 0; i <= steps; i++) {
+        const t = i / steps;
+        const sx = x1 + (x2 - x1) * t;
+        const sy = y1 + (y2 - y1) * t;
+        if (isOnRoad(sx, sy, 0.65)) return true;
+      }
+      return false;
+    }
+
+    function isWithinOutskirts(x, y) {
+      return x >= 0.6 && x <= MAP_W - 0.6 && y >= 0.6 && y <= MAP_H - 0.6 &&
+        (x <= EDGE_DEPLOY_IN || x >= MAP_W - EDGE_DEPLOY_IN || y <= EDGE_DEPLOY_IN || y >= MAP_H - EDGE_DEPLOY_IN);
+    }
+
+    function rollDie(sides) {
+      return Math.floor(Math.random() * Math.max(1, sides)) + 1;
+    }
+
+    function pColor(owner) {
+      return owner === 1 ? '#38bdf8' : '#fb7185';
+    }
+
+    function pDark(owner) {
+      return owner === 1 ? '#0c4a6e' : '#881337';
+    }
+
+    function pName(owner) {
+      return owner === 1 ? 'P1 (Blue)' : 'P2 (Red)';
+    }
+
+    function getEntityById(id) {
+      return state.entities.find(e => e.id === id) || null;
+    }
+
+    function getRuinById(id) {
+      return state.ruins.find(r => r.id === id) || null;
+    }
+
+    // --- AP & ORDER QUEUE HELPERS ---
+    function getQueuedAP(player) {
+      return state.orders[player].reduce((sum, o) => sum + o.cost, 0);
+    }
+
+    function getRemainingAP(player) {
+      return Math.max(0, MAX_AP - getQueuedAP(player));
+    }
+
+    function getQueuedMissileCount(player) {
+      return state.orders[player].filter(o => o.type === 'MISSILE').length;
+    }
+
+    function getAvailableMissiles(player) {
+      return Math.max(0, state.missiles[player] - getQueuedMissileCount(player));
+    }
+
+    function getUnitMoveOrders(unitId, player) {
+      return state.orders[player].filter(o => o.type === 'MOVE' && o.unitId === unitId);
+    }
+
+    function getPlannedPos(entity, player) {
+      if (entity.kind !== 'unit') return { x: entity.x, y: entity.y };
+      const moves = getUnitMoveOrders(entity.id, player);
+      if (moves.length === 0) return { x: entity.x, y: entity.y };
+      const last = moves[moves.length - 1];
+      return { x: last.toX, y: last.toY };
+    }
+
+    function getLegSpeed(unit, fromX, fromY, toX = null, toY = null) {
+      const def = UNIT_DEFS[unit.type];
+      let spd = def.speed;
+      if (def.category === 'land') {
+        if (toX !== null && toY !== null) {
+          if (segmentTouchesRoad(fromX, fromY, toX, toY)) spd += 1;
+        } else if (isOnRoad(fromX, fromY, 0.3)) {
+          spd += 1;
+        }
+      }
+      return spd;
+    }
+
+    function isFacilityQueued(baseId, player) {
+      return state.orders[player].some(o => (o.type === 'PRODUCE' || o.type === 'DEPLOY_AD') && o.baseId === baseId);
+    }
+
+    function hasUnitFullTurnOrder(unitId, player) {
+      return state.orders[player].some(o =>
+        (o.type === 'CONSTRUCT' || o.type === 'REPAIR_UNIT') && o.unitId === unitId
+      );
+    }
+
+    // --- UI FEEDBACK: TOAST & LOG ---
+    function showToast(msg, tone = 'info') {
+      const container = document.getElementById('toast-container');
+      const div = document.createElement('div');
+      const colors = {
+        info: 'bg-slate-900/95 border-sky-400/70 text-sky-100',
+        warn: 'bg-amber-950/95 border-amber-400/80 text-amber-100',
+        danger: 'bg-rose-950/95 border-rose-400/80 text-rose-100',
+        success: 'bg-emerald-950/95 border-emerald-400/80 text-emerald-100'
+      };
+      div.className = `toast-animate px-4 py-2 rounded-xl border text-xs sm:text-sm font-bold text-center shadow-2xl mb-1.5 ${colors[tone] || colors.info}`;
+      div.textContent = msg;
+      container.innerHTML = '';
+      container.appendChild(div);
+    }
+
+    function addLog(msg, tone = 'slate') {
+      const logEl = document.getElementById('combat-log');
+      const colors = {
+        slate: 'text-slate-300 border-slate-700/60 bg-slate-900/60',
+        p1: 'text-sky-200 border-sky-500/40 bg-sky-950/35',
+        p2: 'text-rose-200 border-rose-500/40 bg-rose-950/35',
+        amber: 'text-amber-200 border-amber-500/40 bg-amber-950/35',
+        emerald: 'text-emerald-200 border-emerald-500/40 bg-emerald-950/35',
+        danger: 'text-rose-200 border-rose-500/60 bg-rose-950/60'
+      };
+      const entry = document.createElement('div');
+      entry.className = `px-2 py-1.5 rounded-lg border leading-snug ${colors[tone] || colors.slate}`;
+      entry.innerHTML = `<span class="text-slate-500 mr-1">[T${state.turn}]</span>${msg}`;
+      logEl.prepend(entry);
+    }
+
+    // --- ENTITY CREATION ---
+    function spawnStructure(owner, type, x, y, isOriginalMain = false) {
+      const def = STRUCTURE_DEFS[type];
+      const ent = {
+        id: nextEntityId++,
+        kind: 'structure',
+        owner,
+        type,
+        x, y,
+        hp: def.hp,
+        cooldown: 0,
+        isOriginalMain
+      };
+      state.entities.push(ent);
+      return ent;
+    }
+
+    function spawnUnit(owner, type, x, y) {
+      const def = UNIT_DEFS[type];
+      const ent = {
+        id: nextEntityId++,
+        kind: 'unit',
+        owner,
+        type,
+        x, y,
+        hp: def.hp,
+        ammoSpent: false,
+        idleResupplyTurns: 0,
+        secured: false
+      };
+      state.entities.push(ent);
+      return ent;
+    }
+
+    function findSpawnPointNear(base, unitType) {
+      const cat = UNIT_DEFS[unitType].category;
+      const radii = [0.85, 1.3, 1.85, 2.5, 3.2, 4.2];
+      for (const r of radii) {
+        for (let i = 0; i < 20; i++) {
+          const ang = (i / 20) * Math.PI * 2;
+          const sx = Math.max(0.5, Math.min(MAP_W - 0.5, base.x + Math.cos(ang) * r));
+          const sy = Math.max(0.5, Math.min(MAP_H - 0.5, base.y + Math.sin(ang) * r));
+          const terrainOk = cat === 'air' ? true : (cat === 'sea' ? isWaterForShip(sx, sy) : isLandForUnit(sx, sy));
+          if (!terrainOk) continue;
+          const crowded = state.entities.some(e => distIn(e.x, e.y, sx, sy) < 0.65);
+          if (!crowded) return { x: sx, y: sy };
+        }
+      }
+      return { x: Math.max(0.6, Math.min(MAP_W - 0.6, base.x + 0.7)), y: base.y };
+    }
+
+    function spawnStartingForceFor(owner) {
+      const bases = state.entities.filter(e => e.kind === 'structure' && e.owner === owner && e.type === 'main_base');
+      if (bases.length === 0) return;
+      const b1 = bases[0];
+      const b2 = bases[1] || bases[0];
+      const p1 = findSpawnPointNear(b1, 'infantry');
+      spawnUnit(owner, 'infantry', p1.x, p1.y);
+      const p2 = findSpawnPointNear(b2, 'infantry');
+      spawnUnit(owner, 'infantry', p2.x, p2.y);
+      const p3 = findSpawnPointNear(b1, 'light_veh');
+      spawnUnit(owner, 'light_veh', p3.x, p3.y);
+    }
+
+    // --- SETUP PHASE & SMART AUTO-DEPLOY ---
+    function getSetupPlayer() {
+      return (state.setupStep % 2 === 0) ? 1 : 2;
+    }
+
+    function handleSetupClick(mx, my) {
+      if (!isWithinOutskirts(mx, my)) {
+        showToast(`Main Bases must be placed within ${EDGE_DEPLOY_IN.toFixed(1)}" of the map edge!`, 'warn');
+        SFX.play('miss');
+        return;
+      }
+      if (isBuildingAt(mx, my)) {
+        showToast('Cannot deploy Main Base on an impassable Building (B) tile!', 'danger');
+        SFX.play('miss');
+        return;
+      }
+      if (!isLandForBase(mx, my)) {
+        showToast('Main Bases must be placed on dry land!', 'warn');
+        SFX.play('miss');
+        return;
+      }
+      if (state.entities.some(e => distIn(e.x, e.y, mx, my) < 2.2)) {
+        showToast('Too close to another structure!', 'warn');
+        SFX.play('miss');
+        return;
+      }
+
+      const owner = getSetupPlayer();
+      const baseNum = state.setupStep < 2 ? 1 : 2;
+      spawnStructure(owner, 'main_base', mx, my, true);
+      SFX.play('lock');
+      addLog(`<strong>${pName(owner)}</strong> deployed Original Main Base #${baseNum} at (${mx.toFixed(1)}", ${my.toFixed(1)}").`, owner === 1 ? 'p1' : 'p2');
+
+      state.setupStep++;
+      if (state.setupStep >= 4) {
+        finishSetup();
+      } else {
+        state.activePlayer = getSetupPlayer();
+        updateUI();
+      }
+    }
+
+    function findSmartOutskirtsSpot(region, existingSpots) {
+      const step = 0.6;
+      const valid = [];
+
+      for (let x = region.x0; x <= region.x1; x += step) {
+        for (let y = region.y0; y <= region.y1; y += step) {
+          if (!isWithinOutskirts(x, y) || !isLandForBase(x, y)) continue;
+          const tooClose = existingSpots.some(s => distIn(s.x, s.y, x, y) < 3.0) ||
+            state.entities.some(e => distIn(e.x, e.y, x, y) < 3.0);
+          if (tooClose) continue;
+          valid.push({ x, y });
+        }
+      }
+
+      if (valid.length === 0) return null;
+      const cx = (region.x0 + region.x1) / 2;
+      const cy = (region.y0 + region.y1) / 2;
+      valid.sort((a, b) => distIn(a.x, a.y, cx, cy) - distIn(b.x, b.y, cx, cy));
+      return valid[0];
+    }
+
+    function autoDeploySetup() {
+      if (state.phase !== 'SETUP') return;
+
+      if (!state.customMap) {
+        const spots = [
+          { owner: 1, x: 4.0, y: 8.8 },
+          { owner: 2, x: 64.0, y: 8.8 },
+          { owner: 1, x: 4.0, y: 35.2 },
+          { owner: 2, x: 64.0, y: 35.2 }
+        ];
+        while (state.setupStep < 4) {
+          const s = spots[state.setupStep];
+          spawnStructure(s.owner, 'main_base', s.x, s.y, true);
+          state.setupStep++;
+        }
+      } else {
+        // Smart Custom Map Auto-Deploy: opposite edges on walkable G/R land (never B or W)
+        const wide = MAP_W >= MAP_H;
+        const m = EDGE_DEPLOY_IN - 0.8;
+        const regions = wide
+          ? [
+              { owner: 1, x0: 0.8, x1: m, y0: 1.0, y1: MAP_H * 0.45 },
+              { owner: 2, x0: MAP_W - m, x1: MAP_W - 0.8, y0: 1.0, y1: MAP_H * 0.45 },
+              { owner: 1, x0: 0.8, x1: m, y0: MAP_H * 0.55, y1: MAP_H - 1.0 },
+              { owner: 2, x0: MAP_W - m, x1: MAP_W - 0.8, y0: MAP_H * 0.55, y1: MAP_H - 1.0 }
+            ]
+          : [
+              { owner: 1, x0: 1.0, x1: MAP_W * 0.46, y0: 0.8, y1: m },
+              { owner: 2, x0: 1.0, x1: MAP_W * 0.46, y0: MAP_H - m, y1: MAP_H - 0.8 },
+              { owner: 1, x0: MAP_W * 0.54, x1: MAP_W - 1.0, y0: 0.8, y1: m },
+              { owner: 2, x0: MAP_W * 0.54, x1: MAP_W - 1.0, y0: MAP_H - m, y1: MAP_H - 0.8 }
+            ];
+
+        const chosenSpots = [];
+        while (state.setupStep < 4) {
+          const reg = regions[state.setupStep];
+          let pt = findSmartOutskirtsSpot(reg, chosenSpots);
+          if (!pt) {
+            pt = findSmartOutskirtsSpot({ x0: 0.8, x1: MAP_W - 0.8, y0: 0.8, y1: MAP_H - 0.8 }, chosenSpots);
+          }
+          if (!pt) {
+            showToast(`Could not find enough open Ground/Road land in ${EDGE_DEPLOY_IN.toFixed(1)}" outskirts for auto-deploy.`, 'danger');
+            return;
+          }
+          chosenSpots.push(pt);
+          spawnStructure(reg.owner, 'main_base', pt.x, pt.y, true);
+          state.setupStep++;
+        }
+      }
+
+      SFX.play('lock');
+      addLog('⚡ Quick Auto-Deploy placed all 4 Original Main Bases and starting forces.', 'emerald');
+      finishSetup();
+    }
+
+    function finishSetup() {
+      spawnStartingForceFor(1);
+      spawnStartingForceFor(2);
+      state.phase = 'PLANNING';
+      state.activePlayer = 1;
+      state.turn = 1;
+      state.selectedId = null;
+      setMode('IDLE');
+      document.getElementById('setup-banner').classList.add('hidden');
+      addLog('<strong>CAMPAIGN STARTED (v2.1 WEGO):</strong> Player 1 (Blue), queue up to 4 AP of secret orders!', 'amber');
+      showToast('Deployment Complete! Player 1 (Blue): Queue your secret orders.', 'success');
+      updateUI();
+    }
+
+    // --- MODE MANAGEMENT ---
+    function setMode(newMode, bannerText = '') {
+      state.mode = newMode;
+      if (newMode !== 'DEPLOY_AD_ZONE') state.pendingAdBaseId = null;
+      const banner = document.getElementById('map-mode-banner');
+      const txt = document.getElementById('map-mode-text');
+      if (newMode === 'IDLE') {
+        banner.classList.add('hidden');
+      } else {
+        txt.textContent = bannerText || newMode;
+        banner.classList.remove('hidden');
+      }
+      updateUI();
+    }
+
+    // --- ORDER QUEUEING ---
+    function queueMoveLeg(unit, toX, toY) {
+      const p = state.activePlayer;
+      if (getRemainingAP(p) < 1) {
+        showToast('Not enough AP remaining (need 1 AP)!', 'warn');
+        SFX.play('miss');
+        return false;
+      }
+      if (hasUnitFullTurnOrder(unit.id, p)) {
+        showToast('This unit already has a 4 AP order queued!', 'warn');
+        SFX.play('miss');
+        return false;
+      }
+
+      const from = getPlannedPos(unit, p);
+      const def = UNIT_DEFS[unit.type];
+
+      if (def.category === 'land') {
+        const trace = traceLandPath(from.x, from.y, toX, toY);
+        if (trace.blocked) {
+          if (trace.reason === 'BUILDING') {
+            showToast('Path blocked by buildings! Route around city blocks.', 'danger');
+          } else {
+            showToast('Land units cannot cross water without a road or bridge!', 'warn');
+          }
+          SFX.play('miss');
+          return false;
+        }
+      } else if (def.category === 'sea') {
+        const trace = traceSeaPath(from.x, from.y, toX, toY);
+        if (trace.blocked) {
+          showToast('Ships can only navigate through open water!', 'warn');
+          SFX.play('miss');
+          return false;
+        }
+      }
+
+      const maxSpd = getLegSpeed(unit, from.x, from.y, toX, toY);
+      const d = distIn(from.x, from.y, toX, toY);
+      if (d < 0.12) {
+        showToast('Choose a destination further from current waypoint.', 'warn');
+        return false;
+      }
+      if (d > maxSpd + 0.05) {
+        showToast(`Exceeds leg range (${d.toFixed(2)}" > ${maxSpd.toFixed(1)}"). Click closer!`, 'warn');
+        SFX.play('miss');
+        return false;
+      }
+
+      const legIndex = getUnitMoveOrders(unit.id, p).length + 1;
+      const roadBonus = def.category === 'land' && maxSpd > def.speed;
+      state.orders[p].push({
+        id: nextOrderId++,
+        type: 'MOVE',
+        cost: 1,
+        unitId: unit.id,
+        legIndex,
+        fromX: from.x,
+        fromY: from.y,
+        toX,
+        toY,
+        roadBonus,
+        label: `${def.name} Leg #${legIndex} → (${toX.toFixed(1)}", ${toY.toFixed(1)}")${roadBonus ? ' [ROAD +1"]' : ''}`
+      });
+      SFX.play('move');
+
+      if (getRemainingAP(p) === 0 && state.mode === 'MOVE') {
+        setMode('IDLE');
+      } else {
+        updateUI();
+      }
+      return true;
+    }
+
+    function queueMissileOrder(targetEntity) {
+      const p = state.activePlayer;
+      if (getRemainingAP(p) < 1) {
+        showToast('Not enough AP (need 1 AP)!', 'warn');
+        return;
+      }
+      if (getAvailableMissiles(p) < 1) {
+        showToast('No Missiles remaining in stockpile!', 'warn');
+        return;
+      }
+      if (targetEntity.owner === p) {
+        showToast('Cannot target your own forces with a Missile!', 'warn');
+        return;
+      }
+      if (targetEntity.kind === 'structure' && targetEntity.type === 'main_base') {
+        showToast('Main Bases are immune to Missile attacks!', 'danger');
+        SFX.play('miss');
+        return;
+      }
+
+      const tName = targetEntity.kind === 'unit' ? UNIT_DEFS[targetEntity.type].name : STRUCTURE_DEFS[targetEntity.type].name;
+      state.orders[p].push({
+        id: nextOrderId++,
+        type: 'MISSILE',
+        cost: 1,
+        targetId: targetEntity.id,
+        targetX: targetEntity.x,
+        targetY: targetEntity.y,
+        label: `🚀 Missile Strike → Enemy ${tName}`
+      });
+      SFX.play('lock');
+      setMode('IDLE');
+      showToast(`Missile strike queued on Enemy ${tName}!`, 'warn');
+    }
+
+    function queueProduceOrder(base, unitType) {
+      const p = state.activePlayer;
+      if (getRemainingAP(p) < 2) {
+        showToast('Need 2 AP to produce a unit!', 'warn');
+        return;
+      }
+      if (base.cooldown > 0 || isFacilityQueued(base.id, p)) {
+        showToast('This facility is on cooldown or already producing!', 'warn');
+        return;
+      }
+      const def = UNIT_DEFS[unitType];
+      state.orders[p].push({
+        id: nextOrderId++,
+        type: 'PRODUCE',
+        cost: 2,
+        baseId: base.id,
+        unitType,
+        label: `🏭 Produce ${def.name} at ${STRUCTURE_DEFS[base.type].name} (${def.prodCooldown}t CD)`
+      });
+      SFX.play('click');
+      updateUI();
+    }
+
+    function queueDeployAdZone(base, x, y) {
+      const p = state.activePlayer;
+      if (getRemainingAP(p) < 2) {
+        showToast('Need 2 AP to deploy Air Defense!', 'warn');
+        return;
+      }
+      if (isBuildingAt(x, y)) {
+        showToast('Cannot deploy Air Defense on an impassable Building (B) tile!', 'danger');
+        SFX.play('miss');
+        return;
+      }
+      if (!isLandForUnit(x, y)) {
+        showToast('Air Defense must be deployed on open land or roads!', 'warn');
+        SFX.play('miss');
+        return;
+      }
+      if (distIn(x, y, base.x, base.y) > ESTABLISHED_ZONE_IN) {
+        showToast('Must deploy within the 3" Established Zone of this Base!', 'warn');
+        return;
+      }
+      state.orders[p].push({
+        id: nextOrderId++,
+        type: 'DEPLOY_AD',
+        cost: 2,
+        baseId: base.id,
+        x, y,
+        label: `🛡️ Deploy Air Defense in 3" Zone (${x.toFixed(1)}", ${y.toFixed(1)}")`
+      });
+      SFX.play('lock');
+      setMode('IDLE');
+    }
+
+    function queueConstructOrder(unit, structType) {
+      const p = state.activePlayer;
+      if (getRemainingAP(p) < 4) {
+        showToast('Construction / Conversion requires 4 AP (entire turn)!', 'warn');
+        return;
+      }
+      if (!unit.secured) {
+        showToast('Unit must hold its ground for 1 full turn (Secured) before building!', 'warn');
+        return;
+      }
+      if (!isLandForBase(unit.x, unit.y)) {
+        showToast('Cannot construct a structure on water or an impassable Building (B) tile!', 'danger');
+        SFX.play('miss');
+        return;
+      }
+      if (structType === 'port' && !isNearWater(unit.x, unit.y, 1.2)) {
+        showToast('Ports must be constructed on land adjacent to water!', 'warn');
+        return;
+      }
+      const sName = STRUCTURE_DEFS[structType].name;
+      const verb = structType === 'resupply_hub' ? 'Convert Infantry →' : 'Construct';
+      state.orders[p].push({
+        id: nextOrderId++,
+        type: 'CONSTRUCT',
+        cost: 4,
+        unitId: unit.id,
+        structType,
+        label: `🏗️ ${verb} ${sName} (Consumes ${UNIT_DEFS[unit.type].name})`
+      });
+      SFX.play('lock');
+      updateUI();
+    }
+
+    function queueRepairRuin(ruin, unit = null) {
+      const p = state.activePlayer;
+      if (getRemainingAP(p) < 4) {
+        showToast('Reconstruction requires 4 AP (entire turn)!', 'warn');
+        return;
+      }
+      if (ruin.cooldown > 0) {
+        showToast(`Ruin still cooling down (${ruin.cooldown} turns left)!`, 'warn');
+        return;
+      }
+      const sName = STRUCTURE_DEFS[ruin.type].name;
+      if (ruin.type === 'main_base') {
+        state.orders[p].push({
+          id: nextOrderId++,
+          type: 'REPAIR_MAIN',
+          cost: 4,
+          ruinId: ruin.id,
+          label: `🔧 Reconstruct ${sName} (4 AP)`
+        });
+      } else {
+        if (!unit || (unit.type !== 'infantry' && unit.type !== 'specops')) {
+          showToast('Move an Infantry or Special Forces unit onto the Ruin to repair it!', 'warn');
+          return;
+        }
+        state.orders[p].push({
+          id: nextOrderId++,
+          type: 'REPAIR_UNIT',
+          cost: 4,
+          ruinId: ruin.id,
+          unitId: unit.id,
+          label: `🔧 Repair ${sName} with ${UNIT_DEFS[unit.type].name}`
+        });
+      }
+      SFX.play('lock');
+      updateUI();
+    }
+
+    function undoLastOrder() {
+      if (state.phase !== 'PLANNING') return;
+      const list = state.orders[state.activePlayer];
+      if (list.length === 0) return;
+      list.pop();
+      SFX.play('click');
+      updateUI();
+    }
+
+    function clearAllOrders() {
+      if (state.phase !== 'PLANNING') return;
+      state.orders[state.activePlayer] = [];
+      setMode('IDLE');
+      SFX.play('click');
+      updateUI();
+    }
+
+    // --- HOTSEAT LOCK & WEGO TRANSITION ---
+    function lockActivePlayerOrders() {
+      if (state.phase !== 'PLANNING') return;
+      setMode('IDLE');
+      state.selectedId = null;
+      SFX.play('lock');
+
+      if (state.activePlayer === 1) {
+        const modal = document.getElementById('handoff-modal');
+        document.getElementById('handoff-title').textContent = 'Player 1 Orders Locked';
+        document.getElementById('handoff-subtitle').textContent =
+          `Player 1 queued ${state.orders[1].length} secret order(s) (${getQueuedAP(1)}/4 AP). Pass device to Player 2 (Red).`;
+        const btn = document.getElementById('btn-handoff-ready');
+        btn.textContent = 'Player 2 (Red) Ready — Begin Planning';
+        btn.className = 'tac-btn w-full py-3 rounded-xl bg-gradient-to-b from-rose-500 to-rose-700 hover:from-rose-400 hover:to-rose-600 text-white font-extrabold uppercase tracking-wider text-sm';
+        btn.onclick = () => {
+          modal.classList.add('hidden');
+          state.activePlayer = 2;
+          SFX.play('click');
+          updateUI();
+        };
+        modal.classList.remove('hidden');
+      } else {
+        runSimultaneousResolution();
+      }
+    }
+
+    // --- SIMULTANEOUS 4-STEP WEGO RESOLUTION ---
+    function sleep(ms) { return new Promise(res => setTimeout(res, ms)); }
+
+    function highlightResStep(stepNum) {
+      document.querySelectorAll('#res-steps [data-step]').forEach(el => {
+        const s = Number(el.dataset.step);
+        if (s === stepNum) {
+          el.className = 'px-2 py-0.5 rounded bg-amber-500 text-slate-950 font-extrabold shadow';
+        } else if (s < stepNum) {
+          el.className = 'px-2 py-0.5 rounded bg-emerald-900/80 text-emerald-300 border border-emerald-500/40';
+        } else {
+          el.className = 'px-2 py-0.5 rounded bg-slate-800 text-slate-400';
+        }
+      });
+    }
+
+    function addEffect(fx) {
+      state.effects.push({ ...fx, createdAt: performance.now() });
+    }
+
+    function checkContactResupplyForUnit(unit, x, y) {
+      if (!unit.ammoSpent) return false;
+      const touched = state.entities.some(e =>
+        e.kind === 'structure' &&
+        e.owner === unit.owner &&
+        STRUCTURE_DEFS[e.type].isResupply &&
+        distIn(x, y, e.x, e.y) <= RESUPPLY_TOUCH_IN
+      );
+      if (touched) {
+        unit.ammoSpent = false;
+        unit.idleResupplyTurns = 0;
+        addEffect({ type: 'text', x, y: y - 0.35, text: 'RELOADED!', color: '#34d399', duration: 1500 });
+        addLog(`🔋 <strong>${pName(unit.owner)} ${UNIT_DEFS[unit.type].name}</strong> reloaded on contact with friendly Base/Hub!`, 'emerald');
+        return true;
+      }
+      return false;
+    }
+
+    function canAutoEngage(attacker, target) {
+      if (attacker.owner === target.owner) return false;
+      const aDef = UNIT_DEFS[attacker.type];
+      if (distIn(attacker.x, attacker.y, target.x, target.y) > aDef.range + 0.03) return false;
+
+      if (attacker.type === 'air_def') {
+        return target.kind === 'unit' && target.type === 'plane';
+      }
+      if (target.kind === 'unit' && target.type === 'plane') {
+        return attacker.type === 'plane' || attacker.type === 'air_def';
+      }
+      if (attacker.type === 'infantry') {
+        if (target.kind === 'unit' && (target.type === 'heavy_veh' || target.type === 'plane' || target.type === 'ship')) {
+          return false;
+        }
+      }
+      return true;
+    }
+
+    function convertStructureToRuin(struct) {
+      state.ruins.push({
+        id: nextEntityId++,
+        owner: struct.owner,
+        type: struct.type,
+        x: struct.x,
+        y: struct.y,
+        cooldown: RUIN_REPAIR_TURNS,
+        isOriginalMain: !!struct.isOriginalMain
+      });
+    }
+
+    async function runSimultaneousResolution() {
+      state.phase = 'RESOLVING';
+      state.selectedId = null;
+      document.getElementById('resolution-banner').classList.remove('hidden');
+      document.getElementById('btn-next-turn').classList.add('hidden');
+      updateUI();
+
+      addLog(`<strong class="text-amber-300">══ TURN ${state.turn} SIMULTANEOUS RESOLUTION ══</strong>`, 'amber');
+
+      const movedUnitIds = new Set();
+      const spentBeforeThisTurn = new Set(
+        state.entities.filter(e => e.kind === 'unit' && e.ammoSpent).map(e => e.id)
+      );
+
+      // STEP 1: SIMULTANEOUS MULTI-LEG MOVEMENT & MID-PATH RESUPPLY
+      highlightResStep(1);
+      const unitPaths = new Map();
+      for (const p of [1, 2]) {
+        for (const o of state.orders[p]) {
+          if (o.type === 'MOVE') {
+            if (!unitPaths.has(o.unitId)) unitPaths.set(o.unitId, []);
+            unitPaths.get(o.unitId).push(o);
+            movedUnitIds.add(o.unitId);
+          }
+        }
+      }
+
+      if (unitPaths.size > 0) {
+        SFX.play('move');
+        const maxLegs = Math.max(...Array.from(unitPaths.values()).map(arr => arr.length));
+        for (let leg = 0; leg < maxLegs; leg++) {
+          const activeAnims = [];
+          for (const [unitId, legs] of unitPaths.entries()) {
+            if (leg < legs.length) {
+              const u = getEntityById(unitId);
+              if (u) {
+                activeAnims.push({
+                  unit: u,
+                  fromX: legs[leg].fromX,
+                  fromY: legs[leg].fromY,
+                  toX: legs[leg].toX,
+                  toY: legs[leg].toY
+                });
+              }
+            }
+          }
+          const duration = 520;
+          const startTime = performance.now();
+          await new Promise(resolve => {
+            function stepAnim(now) {
+              const t = Math.min(1, (now - startTime) / duration);
+              const ease = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+              for (const a of activeAnims) {
+                a.unit.x = a.fromX + (a.toX - a.fromX) * ease;
+                a.unit.y = a.fromY + (a.toY - a.fromY) * ease;
+                checkContactResupplyForUnit(a.unit, a.unit.x, a.unit.y);
+              }
+              if (t < 1) requestAnimationFrame(stepAnim);
+              else resolve();
+            }
+            requestAnimationFrame(stepAnim);
+          });
+        }
+        addLog(`Step 1: ${unitPaths.size} unit(s) completed simultaneous movement.`, 'slate');
+      } else {
+        addLog('Step 1: No movement orders queued.', 'slate');
+      }
+
+      for (const u of state.entities) {
+        if (u.kind === 'unit' && u.ammoSpent) {
+          checkContactResupplyForUnit(u, u.x, u.y);
+        }
+      }
+      await sleep(350);
+
+      // STEP 2: AUTOMATIC ENGAGEMENT (0 AP, SIMULTANEOUS, MUTUAL KILLS)
+      highlightResStep(2);
+      const targetAttackers = new Map();
+
+      for (const unit of state.entities) {
+        if (unit.kind !== 'unit' || unit.ammoSpent) continue;
+        const candidates = state.entities.filter(t => canAutoEngage(unit, t));
+        if (candidates.length === 0) continue;
+
+        candidates.sort((a, b) => {
+          const da = distIn(unit.x, unit.y, a.x, a.y);
+          const db = distIn(unit.x, unit.y, b.x, b.y);
+          if (Math.abs(da - db) > 0.02) return da - db;
+          return a.hp - b.hp;
+        });
+
+        const chosen = candidates[0];
+        if (!targetAttackers.has(chosen.id)) targetAttackers.set(chosen.id, []);
+        targetAttackers.get(chosen.id).push(unit);
+      }
+
+      const destroyedInStep2 = new Set();
+      if (targetAttackers.size > 0) {
+        SFX.play('fire');
+        for (const [targetId, attackers] of targetAttackers.entries()) {
+          const target = getEntityById(targetId);
+          if (!target) continue;
+
+          const combinedAtk = attackers.reduce((sum, u) => sum + UNIT_DEFS[u.type].atk, 0);
+          const atkRoll = rollDie(combinedAtk);
+          const defRoll = rollDie(target.hp);
+          const hit = atkRoll > defRoll;
+
+          for (const a of attackers) {
+            a.ammoSpent = true;
+            a.idleResupplyTurns = 0;
+            addEffect({
+              type: 'beam',
+              x1: a.x, y1: a.y, x2: target.x, y2: target.y,
+              color: pColor(a.owner), duration: 1100
+            });
+          }
+
+          const tName = target.kind === 'unit' ? UNIT_DEFS[target.type].name : STRUCTURE_DEFS[target.type].name;
+          const aNames = attackers.map(a => UNIT_DEFS[a.type].name).join(' + ');
+
+          if (hit) {
+            destroyedInStep2.add(target.id);
+            state.stats.kills[attackers[0].owner]++;
+            addEffect({ type: 'boom', x: target.x, y: target.y, color: '#f97316', duration: 950 });
+            addEffect({ type: 'text', x: target.x, y: target.y - 0.35, text: `💥 ${atkRoll} > ${defRoll}`, color: '#fb7185', duration: 1600 });
+            addLog(`💥 <strong>AUTO-ENGAGE:</strong> ${pName(attackers[0].owner)} [${aNames}] rolled <strong>${atkRoll}</strong> (d${combinedAtk}) vs ${pName(target.owner)} ${tName} <strong>${defRoll}</strong> (d${target.hp}) → <strong>DESTROYED!</strong>`, 'danger');
+          } else {
+            addEffect({ type: 'text', x: target.x, y: target.y - 0.35, text: `🛡️ ${atkRoll} ≤ ${defRoll}`, color: '#94a3b8', duration: 1500 });
+            addLog(`🛡️ <strong>AUTO-ENGAGE:</strong> ${pName(attackers[0].owner)} [${aNames}] rolled <strong>${atkRoll}</strong> (d${combinedAtk}) vs ${pName(target.owner)} ${tName} <strong>${defRoll}</strong> (d${target.hp}) → <strong>DEFLECTED</strong>.`, 'slate');
+          }
+        }
+
+        if (destroyedInStep2.size > 0) SFX.play('explode');
+        else SFX.play('miss');
+
+        const survivors = [];
+        for (const e of state.entities) {
+          if (destroyedInStep2.has(e.id)) {
+            if (e.kind === 'structure') convertStructureToRuin(e);
+          } else {
+            survivors.push(e);
+          }
+        }
+        state.entities = survivors;
+      } else {
+        addLog('Step 2: No Loaded units in Automatic Engagement range.', 'slate');
+      }
+      await sleep(950);
+
+      // STEP 3: MISSILES & AIR DEFENSE INTERCEPTION
+      highlightResStep(3);
+      const missileOrders = [
+        ...state.orders[1].filter(o => o.type === 'MISSILE').map(o => ({ ...o, owner: 1 })),
+        ...state.orders[2].filter(o => o.type === 'MISSILE').map(o => ({ ...o, owner: 2 }))
+      ];
+
+      if (missileOrders.length > 0) {
+        const destroyedByMissile = new Set();
+        for (const m of missileOrders) {
+          if (state.missiles[m.owner] <= 0) continue;
+          state.missiles[m.owner]--;
+          state.stats.missilesFired[m.owner]++;
+
+          const target = getEntityById(m.targetId);
+          if (!target) {
+            addLog(`🚀 ${pName(m.owner)} Missile struck empty coordinates (target already destroyed).`, 'amber');
+            addEffect({ type: 'boom', x: m.targetX, y: m.targetY, color: '#f59e0b', duration: 850 });
+            continue;
+          }
+
+          let missileRoll = rollDie(MISSILE_ATK);
+          const interceptors = state.entities.filter(e =>
+            e.kind === 'unit' &&
+            e.owner === target.owner &&
+            e.type === 'air_def' &&
+            distIn(e.x, e.y, target.x, target.y) <= ESTABLISHED_ZONE_IN
+          );
+
+          let interceptText = '';
+          let intercepted = false;
+          if (interceptors.length > 0) {
+            const adRoll = rollDie(4);
+            addEffect({
+              type: 'beam', x1: interceptors[0].x, y1: interceptors[0].y,
+              x2: target.x, y2: target.y, color: '#34d399', duration: 1000
+            });
+            if (adRoll > missileRoll) {
+              intercepted = true;
+              interceptText = ` (Air Def D4=${adRoll} > ${missileRoll} — INTERCEPTED!)`;
+            } else {
+              missileRoll = Math.max(0, missileRoll - adRoll);
+              interceptText = ` (Air Def D4=${adRoll} reduced Atk to ${missileRoll})`;
+            }
+          }
+
+          const tName = target.kind === 'unit' ? UNIT_DEFS[target.type].name : STRUCTURE_DEFS[target.type].name;
+          if (intercepted) {
+            SFX.play('miss');
+            addEffect({ type: 'text', x: target.x, y: target.y - 0.35, text: '🛡️ INTERCEPTED!', color: '#34d399', duration: 1500 });
+            addLog(`🚀 <strong>MISSILE:</strong> ${pName(m.owner)} fired at ${tName}${interceptText}`, 'emerald');
+          } else {
+            const defRoll = rollDie(target.hp);
+            if (missileRoll > defRoll) {
+              destroyedByMissile.add(target.id);
+              state.stats.kills[m.owner]++;
+              SFX.play('explode');
+              addEffect({ type: 'boom', x: target.x, y: target.y, color: '#ef4444', duration: 1000 });
+              addEffect({ type: 'text', x: target.x, y: target.y - 0.35, text: `🚀 HIT ${missileRoll}>${defRoll}`, color: '#fb7185', duration: 1600 });
+              addLog(`🚀 <strong>MISSILE HIT:</strong> ${pName(m.owner)} struck ${pName(target.owner)} ${tName}${interceptText} vs Def <strong>${defRoll}</strong> (d${target.hp}) → <strong>DESTROYED!</strong>`, 'danger');
+            } else {
+              SFX.play('miss');
+              addEffect({ type: 'text', x: target.x, y: target.y - 0.35, text: `🚀 MISS ${missileRoll}≤${defRoll}`, color: '#fbbf24', duration: 1500 });
+              addLog(`🚀 <strong>MISSILE:</strong> ${pName(m.owner)} struck ${pName(target.owner)} ${tName}${interceptText} vs Def <strong>${defRoll}</strong> (d${target.hp}) → <strong>SURVIVED</strong>.`, 'amber');
+            }
+          }
+        }
+
+        if (destroyedByMissile.size > 0) {
+          const survivors = [];
+          for (const e of state.entities) {
+            if (destroyedByMissile.has(e.id)) {
+              if (e.kind === 'structure') convertStructureToRuin(e);
+            } else {
+              survivors.push(e);
+            }
+          }
+          state.entities = survivors;
+        }
+      } else {
+        addLog('Step 3: No Missiles launched this turn.', 'slate');
+      }
+      await sleep(800);
+
+      // STEP 4: LOGISTICS, PRODUCTION, CONSTRUCTION & REPAIRS
+      highlightResStep(4);
+
+      for (const e of state.entities) {
+        if (e.kind === 'structure' && e.cooldown > 0) {
+          e.cooldown--;
+        }
+        if (e.kind === 'unit') {
+          if (e.ammoSpent && spentBeforeThisTurn.has(e.id)) {
+            e.idleResupplyTurns++;
+            if (e.idleResupplyTurns >= 2) {
+              e.ammoSpent = false;
+              e.idleResupplyTurns = 0;
+              addEffect({ type: 'text', x: e.x, y: e.y - 0.35, text: 'IDLE RELOAD', color: '#34d399', duration: 1300 });
+              addLog(`🔋 ${pName(e.owner)} ${UNIT_DEFS[e.type].name} completed 2-turn Idle Resupply.`, 'emerald');
+            }
+          }
+          e.secured = !movedUnitIds.has(e.id);
+        }
+      }
+
+      for (const r of state.ruins) {
+        if (r.cooldown > 0) r.cooldown--;
+      }
+
+      for (const p of [1, 2]) {
+        for (const o of state.orders[p]) {
+          if (o.type === 'PRODUCE') {
+            const base = getEntityById(o.baseId);
+            if (!base) {
+              addLog(`⚠️ ${pName(p)} production canceled (facility destroyed).`, 'amber');
+              continue;
+            }
+            const pt = findSpawnPointNear(base, o.unitType);
+            spawnUnit(p, o.unitType, pt.x, pt.y);
+            base.cooldown = UNIT_DEFS[o.unitType].prodCooldown;
+            addLog(`🏭 <strong>${pName(p)}</strong> produced <strong>${UNIT_DEFS[o.unitType].name}</strong> at ${STRUCTURE_DEFS[base.type].name}.`, p === 1 ? 'p1' : 'p2');
+          } else if (o.type === 'DEPLOY_AD') {
+            const base = getEntityById(o.baseId);
+            if (!base) continue;
+            spawnUnit(p, 'air_def', o.x, o.y);
+            base.cooldown = UNIT_DEFS.air_def.prodCooldown;
+            addLog(`🛡️ <strong>${pName(p)}</strong> deployed <strong>Air Defense</strong> in 3" Established Zone.`, p === 1 ? 'p1' : 'p2');
+          } else if (o.type === 'CONSTRUCT') {
+            const unit = getEntityById(o.unitId);
+            if (!unit) {
+              addLog(`⚠️ ${pName(p)} construction/conversion canceled (unit destroyed in combat!).`, 'amber');
+              continue;
+            }
+            const { x, y } = unit;
+            state.entities = state.entities.filter(e => e.id !== unit.id);
+            spawnStructure(p, o.structType, x, y, false);
+            addEffect({ type: 'text', x, y: y - 0.35, text: 'BUILT!', color: '#38bdf8', duration: 1500 });
+            addLog(`🏗️ <strong>${pName(p)}</strong> completed <strong>${STRUCTURE_DEFS[o.structType].name}</strong> at (${x.toFixed(1)}", ${y.toFixed(1)}").`, 'emerald');
+          } else if (o.type === 'REPAIR_MAIN') {
+            const ruin = getRuinById(o.ruinId);
+            if (!ruin) continue;
+            state.ruins = state.ruins.filter(r => r.id !== ruin.id);
+            spawnStructure(p, 'main_base', ruin.x, ruin.y, ruin.isOriginalMain);
+            addLog(`🔧 <strong>${pName(p)}</strong> reconstructed <strong>Main Base</strong>!`, 'emerald');
+          } else if (o.type === 'REPAIR_UNIT') {
+            const ruin = getRuinById(o.ruinId);
+            const unit = getEntityById(o.unitId);
+            if (!ruin || !unit) {
+              addLog(`⚠️ ${pName(p)} ruin repair canceled (unit destroyed).`, 'amber');
+              continue;
+            }
+            state.ruins = state.ruins.filter(r => r.id !== ruin.id);
+            spawnStructure(p, ruin.type, ruin.x, ruin.y, ruin.isOriginalMain);
+            addLog(`🔧 <strong>${pName(p)}</strong> repaired <strong>${STRUCTURE_DEFS[ruin.type].name}</strong>!`, 'emerald');
+          }
+        }
+      }
+
+      if (state.turn % MISSILE_RESTOCK_TURNS === 0) {
+        state.missiles[1]++;
+        state.missiles[2]++;
+        addLog('🚀 <strong>5-TURN RESTOCK:</strong> Both players received +1 Missile!', 'amber');
+      }
+
+      state.orders[1] = [];
+      state.orders[2] = [];
+
+      const p1MainAlive = state.entities.filter(e => e.kind === 'structure' && e.owner === 1 && e.isOriginalMain).length;
+      const p2MainAlive = state.entities.filter(e => e.kind === 'structure' && e.owner === 2 && e.isOriginalMain).length;
+
+      if (p1MainAlive === 0 || p2MainAlive === 0) {
+        state.phase = 'GAMEOVER';
+        SFX.play('victory');
+        showVictoryModal(p1MainAlive, p2MainAlive);
+        updateUI();
+        return;
+      }
+
+      state.phase = 'POST_RESOLUTION';
+      document.getElementById('btn-next-turn').classList.remove('hidden');
+      showToast(`Turn ${state.turn} Resolved! Review the battlefield, then begin Turn ${state.turn + 1}.`, 'success');
+      updateUI();
+    }
+
+    function beginNextTurn() {
+      if (state.phase !== 'POST_RESOLUTION') return;
+      state.turn++;
+      state.activePlayer = 1;
+      state.phase = 'PLANNING';
+      document.getElementById('resolution-banner').classList.add('hidden');
+
+      const modal = document.getElementById('handoff-modal');
+      document.getElementById('handoff-title').textContent = `Turn ${state.turn} — Planning Phase`;
+      document.getElementById('handoff-subtitle').textContent = 'Pass device to Player 1 (Blue) to plot secret orders.';
+      const btn = document.getElementById('btn-handoff-ready');
+      btn.textContent = 'Player 1 (Blue) Ready — Begin Planning';
+      btn.className = 'tac-btn w-full py-3 rounded-xl bg-gradient-to-b from-sky-500 to-blue-700 hover:from-sky-400 hover:to-blue-600 text-white font-extrabold uppercase tracking-wider text-sm';
+      btn.onclick = () => {
+        modal.classList.add('hidden');
+        SFX.play('click');
+        updateUI();
+      };
+      modal.classList.remove('hidden');
+      updateUI();
+    }
+
+    function showVictoryModal(p1Main, p2Main) {
+      const modal = document.getElementById('victory-modal');
+      const title = document.getElementById('victory-title');
+      const sub = document.getElementById('victory-subtitle');
+      if (p1Main === 0 && p2Main === 0) {
+        title.textContent = 'MUTUAL ANNIHILATION — DRAW!';
+        sub.textContent = 'Both commanders lost their Original Main Bases simultaneously.';
+      } else if (p2Main === 0) {
+        title.textContent = 'PLAYER 1 (BLUE) VICTORY!';
+        sub.textContent = 'Both Red Original Main Bases have been destroyed.';
+      } else {
+        title.textContent = 'PLAYER 2 (RED) VICTORY!';
+        sub.textContent = 'Both Blue Original Main Bases have been destroyed.';
+      }
+      document.getElementById('victory-stats').innerHTML = `
+        <div>Turns Played: <strong>${state.turn}</strong></div>
+        <div>Blue Kills: <strong class="text-sky-300">${state.stats.kills[1]}</strong> | Red Kills: <strong class="text-rose-300">${state.stats.kills[2]}</strong></div>
+        <div>Missiles Fired: Blue <strong>${state.stats.missilesFired[1]}</strong> | Red <strong>${state.stats.missilesFired[2]}</strong></div>
+      `;
+      modal.classList.remove('hidden');
+    }
+
+    // --- CANVAS HIT-TESTING & INTERACTION ---
+    function findEntityAt(mx, my) {
+      let best = null;
+      // Scale hit radius cleanly so clicking icons at 1x zoom (68" map) or 8x zoom feels responsive
+      let bestDist = Math.max(0.48, 16 / Math.max(1, ppi));
+      for (const e of state.entities) {
+        const d = distIn(mx, my, e.x, e.y);
+        if (d < bestDist) {
+          bestDist = d;
+          best = e;
+        }
+      }
+      return best;
+    }
+
+    function findRuinAt(mx, my) {
+      let best = null;
+      let bestDist = Math.max(0.5, 16 / Math.max(1, ppi));
+      for (const r of state.ruins) {
+        const d = distIn(mx, my, r.x, r.y);
+        if (d < bestDist) {
+          bestDist = d;
+          best = r;
+        }
+      }
+      return best;
+    }
+
+    function processMapClick(clientX, clientY) {
+      const rect = canvas.getBoundingClientRect();
+      const px = clientX - rect.left;
+      const py = clientY - rect.top;
+      const mx = toMapX(px);
+      const my = toMapY(py);
+      if (mx < 0 || mx > MAP_W || my < 0 || my > MAP_H) return;
+
+      if (state.phase === 'SETUP') {
+        handleSetupClick(mx, my);
+        return;
+      }
+
+      if (state.phase !== 'PLANNING') {
+        const clicked = findEntityAt(mx, my);
+        state.selectedId = clicked ? clicked.id : null;
+        updateUI();
+        return;
+      }
+
+      const p = state.activePlayer;
+
+      if (state.mode === 'MISSILE') {
+        const target = findEntityAt(mx, my);
+        if (!target) {
+          showToast('Click directly on an enemy unit or non-Main-Base structure!', 'warn');
+          return;
+        }
+        queueMissileOrder(target);
+        return;
+      }
+
+      if (state.mode === 'DEPLOY_AD_ZONE') {
+        const base = getEntityById(state.pendingAdBaseId);
+        if (base) queueDeployAdZone(base, mx, my);
+        return;
+      }
+
+      if (state.mode === 'MOVE') {
+        const sel = getEntityById(state.selectedId);
+        if (sel && sel.kind === 'unit' && sel.owner === p) {
+          queueMoveLeg(sel, mx, my);
+          return;
+        }
+        setMode('IDLE');
+      }
+
+      const clickedEntity = findEntityAt(mx, my);
+      if (clickedEntity) {
+        state.selectedId = clickedEntity.id;
+        SFX.play('click');
+        updateUI();
+        return;
+      }
+
+      const clickedRuin = findRuinAt(mx, my);
+      if (clickedRuin) {
+        state.selectedId = clickedRuin.id;
+        SFX.play('click');
+        updateUI();
+        return;
+      }
+
+      const sel = getEntityById(state.selectedId);
+      if (sel && sel.kind === 'unit' && sel.owner === p && getRemainingAP(p) >= 1 && !hasUnitFullTurnOrder(sel.id, p)) {
+        const from = getPlannedPos(sel, p);
+        const maxSpd = getLegSpeed(sel, from.x, from.y, mx, my);
+        if (distIn(from.x, from.y, mx, my) <= maxSpd + 0.05) {
+          queueMoveLeg(sel, mx, my);
+          return;
+        }
+      }
+
+      state.selectedId = null;
+      updateUI();
+    }
+
+    function handleCanvasClick(evt) {
+      if (state.didDragPan || state.panToolActive || state.spaceDown) {
+        state.didDragPan = false;
+        return;
+      }
+      processMapClick(evt.clientX, evt.clientY);
+    }
+
+    function updateTelemetryAt(clientX, clientY) {
+      const rect = canvas.getBoundingClientRect();
+      const px = clientX - rect.left;
+      const py = clientY - rect.top;
+      const mx = toMapX(px);
+      const my = toMapY(py);
+      if (mx >= 0 && mx <= MAP_W && my >= 0 && my <= MAP_H) {
+        state.hoverMap = { x: mx, y: my };
+        document.getElementById('tel-coords').textContent = `${mx.toFixed(2)}", ${my.toFixed(2)}"`;
+
+        const tEl = document.getElementById('tel-terrain');
+        if (state.customMap) {
+          const cell = getCustomCellAt(mx, my);
+          if (cell) {
+            const labels = { W: 'WATER', G: 'GROUND', R: 'ROAD (+1")', B: 'BUILDING (IMPASSABLE)' };
+            tEl.textContent = labels[cell.type] || 'GROUND';
+            tEl.className = cell.type === 'W' ? 'text-sky-400'
+              : cell.type === 'R' ? 'text-amber-300'
+              : cell.type === 'B' ? 'text-rose-400 font-bold'
+              : 'text-emerald-400';
+
+            const elevStr = cell.bldgHeight > 0
+              ? `${cell.totalElev.toFixed(0)} (G:${cell.groundElev.toFixed(0)} +B:${cell.bldgHeight.toFixed(0)})`
+              : `${cell.totalElev.toFixed(0)}`;
+            document.getElementById('tel-elev').textContent = elevStr;
+          }
+        } else {
+          const terrain = isPointOnBridge(mx, my) ? 'BRIDGE (ROAD)' : (isPointInWater(mx, my) ? 'WATER' : (isOnRoad(mx, my) ? 'HIGHWAY (+1")' : 'LAND'));
+          tEl.textContent = terrain;
+          tEl.className = terrain.includes('WATER') ? 'text-sky-400' : (terrain.includes('HIGHWAY') || terrain.includes('BRIDGE') ? 'text-amber-300' : 'text-emerald-400');
+        }
+
+        const sel = getEntityById(state.selectedId);
+        if (sel) {
+          const ref = (state.phase === 'PLANNING' && sel.owner === state.activePlayer) ? getPlannedPos(sel, state.activePlayer) : sel;
+          document.getElementById('tel-dist').textContent = `${distIn(ref.x, ref.y, mx, my).toFixed(2)}"`;
+        } else {
+          document.getElementById('tel-dist').textContent = '—';
+        }
+      } else {
+        state.hoverMap = null;
+      }
+    }
+
+    function handleCanvasMove(evt) {
+      updateTelemetryAt(evt.clientX, evt.clientY);
+    }
+
+    // --- UI RENDERING ---
+    function updateUI() {
+      const p = state.activePlayer;
+      const remAP = getRemainingAP(p);
+      const queuedAP = getQueuedAP(p);
+
+      const pill = document.getElementById('hud-player-pill');
+      const dot = document.getElementById('hud-player-dot');
+      const pTxt = document.getElementById('hud-player-text');
+      const phaseBadge = document.getElementById('hud-phase-badge');
+
+      if (p === 1) {
+        pill.className = 'px-3 py-1.5 rounded-lg border border-sky-500/60 bg-sky-950/50 text-sky-200 flex items-center gap-2 font-bold text-xs sm:text-sm tracking-wide';
+        dot.className = 'w-2.5 h-2.5 rounded-full bg-sky-400 shadow-[0_0_8px_#38bdf8]';
+        pTxt.textContent = 'PLAYER 1 (BLUE)';
+      } else {
+        pill.className = 'px-3 py-1.5 rounded-lg border border-rose-500/60 bg-rose-950/50 text-rose-200 flex items-center gap-2 font-bold text-xs sm:text-sm tracking-wide';
+        dot.className = 'w-2.5 h-2.5 rounded-full bg-rose-400 shadow-[0_0_8px_#fb7185]';
+        pTxt.textContent = 'PLAYER 2 (RED)';
+      }
+      phaseBadge.textContent = state.phase.replace('_', ' ');
+
+      document.getElementById('hud-turn').textContent = state.turn;
+      const turnsToRestock = MISSILE_RESTOCK_TURNS - ((state.turn - 1) % MISSILE_RESTOCK_TURNS);
+      document.getElementById('hud-restock').textContent = `In ${turnsToRestock}t`;
+
+      const pipsEl = document.getElementById('hud-ap-pips');
+      pipsEl.innerHTML = '';
+      for (let i = 0; i < MAX_AP; i++) {
+        const pip = document.createElement('div');
+        if (i < remAP) pip.className = `ap-pip ${p === 1 ? 'active-p1' : 'active-p2'}`;
+        else if (i < remAP + queuedAP) pip.className = 'ap-pip queued';
+        else pip.className = 'ap-pip empty';
+        pipsEl.appendChild(pip);
+      }
+      document.getElementById('hud-ap-text').textContent = `${remAP}/${MAX_AP}`;
+
+      const availM = getAvailableMissiles(p);
+      document.getElementById('hud-missiles').textContent = availM;
+      document.getElementById('btn-launch-missile').disabled = state.phase !== 'PLANNING' || remAP < 1 || availM < 1;
+
+      const lockBtn = document.getElementById('btn-lock-orders');
+      lockBtn.disabled = state.phase !== 'PLANNING';
+      lockBtn.textContent = p === 1 ? 'Lock P1 Orders 🔒' : 'Lock P2 & Resolve ⚡';
+
+      if (state.phase === 'SETUP') {
+        const sp = getSetupPlayer();
+        const num = state.setupStep < 2 ? 1 : 2;
+        document.getElementById('setup-instruction').textContent =
+          `${pName(sp)}: Place Original Main Base #${num} on walkable dry land within ${EDGE_DEPLOY_IN.toFixed(1)}" of any map edge.`;
+      }
+
+      const p1B = state.entities.filter(e => e.kind === 'structure' && e.owner === 1 && e.isOriginalMain).length;
+      const p2B = state.entities.filter(e => e.kind === 'structure' && e.owner === 2 && e.isOriginalMain).length;
+      document.getElementById('tel-p1-bases').textContent = `${p1B}/2`;
+      document.getElementById('tel-p2-bases').textContent = `${p2B}/2`;
+
+      renderInspector();
+      renderOrderQueue();
+    }
+
+    function renderInspector() {
+      const box = document.getElementById('inspector-content');
+      const badge = document.getElementById('inspector-owner-badge');
+      const p = state.activePlayer;
+      const remAP = getRemainingAP(p);
+
+      const ent = getEntityById(state.selectedId);
+      const ruin = !ent ? getRuinById(state.selectedId) : null;
+
+      if (!ent && !ruin) {
+        badge.textContent = 'NO SELECTION';
+        badge.className = 'text-[10px] font-mono-tac px-2 py-0.5 rounded bg-slate-800 text-slate-400';
+        box.innerHTML = `
+          <div class="text-slate-400 leading-relaxed">
+            Click any unit, structure, or ruin on the map to inspect stats and queue orders.<br/>
+            <span class="text-sky-300 font-semibold">Tip:</span> Select a friendly unit and click within its movement ring to chain multiple <strong>1 AP</strong> move legs!
+          </div>`;
+        return;
+      }
+
+      if (ruin) {
+        const sDef = STRUCTURE_DEFS[ruin.type];
+        badge.textContent = `${pName(ruin.owner)} RUIN`;
+        badge.className = 'text-[10px] font-mono-tac px-2 py-0.5 rounded bg-amber-900/60 text-amber-300 border border-amber-500/40';
+        const canRepairMain = state.phase === 'PLANNING' && ruin.owner === p && ruin.type === 'main_base' && ruin.cooldown === 0 && remAP >= 4;
+        const nearbyRepairUnit = state.entities.find(u =>
+          u.kind === 'unit' && u.owner === p && (u.type === 'infantry' || u.type === 'specops') &&
+          distIn(u.x, u.y, ruin.x, ruin.y) <= 0.8
+        );
+        const canRepairGen = state.phase === 'PLANNING' && ruin.owner === p && ruin.type !== 'main_base' && ruin.cooldown === 0 && remAP >= 4 && !!nearbyRepairUnit;
+
+        box.innerHTML = `
+          <div class="font-bold text-sm text-amber-300 mb-1">🏚️ ${sDef.name} Ruins</div>
+          <div class="font-mono-tac text-[11px] text-slate-300 mb-2">
+            Cooldown: <strong class="${ruin.cooldown === 0 ? 'text-emerald-400' : 'text-amber-300'}">${ruin.cooldown === 0 ? 'READY TO REPAIR' : ruin.cooldown + ' turn(s)'}</strong>
+          </div>
+          ${ruin.type === 'main_base'
+            ? `<button id="act-repair-main" ${canRepairMain ? '' : 'disabled'} class="tac-btn w-full py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-white font-bold text-xs">🔧 Reconstruct Main Base (4 AP)</button>`
+            : `<button id="act-repair-gen" ${canRepairGen ? '' : 'disabled'} class="tac-btn w-full py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-white font-bold text-xs">🔧 Repair with Inf/SpecOps (4 AP)</button>`
+          }
+        `;
+        if (canRepairMain) document.getElementById('act-repair-main').onclick = () => queueRepairRuin(ruin);
+        if (canRepairGen) document.getElementById('act-repair-gen').onclick = () => queueRepairRuin(ruin, nearbyRepairUnit);
+        return;
+      }
+
+      const isOwn = ent.owner === p;
+      badge.textContent = pName(ent.owner);
+      badge.className = ent.owner === 1
+        ? 'text-[10px] font-mono-tac px-2 py-0.5 rounded bg-sky-900/70 text-sky-300 border border-sky-500/40'
+        : 'text-[10px] font-mono-tac px-2 py-0.5 rounded bg-rose-900/70 text-rose-300 border border-rose-500/40';
+
+      if (ent.kind === 'unit') {
+        const def = UNIT_DEFS[ent.type];
+        const legs = isOwn ? getUnitMoveOrders(ent.id, p).length : 0;
+        const canAct = state.phase === 'PLANNING' && isOwn;
+        const canMove = canAct && remAP >= 1 && !hasUnitFullTurnOrder(ent.id, p);
+        const canBuild = canAct && remAP >= 4 && ent.secured && def.category === 'land';
+
+        box.innerHTML = `
+          <div class="flex items-center justify-between mb-1">
+            <span class="font-extrabold text-sm text-slate-100">${def.name} <span class="text-[10px] font-mono-tac text-slate-400">(${def.shape})</span></span>
+            <span class="px-1.5 py-0.5 rounded text-[10px] font-mono-tac font-bold ${ent.ammoSpent ? 'bg-rose-900/80 text-rose-300 border border-rose-500/50' : 'bg-emerald-900/80 text-emerald-300 border border-emerald-500/50'}">
+              ${ent.ammoSpent ? `SPENT (${ent.idleResupplyTurns}/2t)` : 'LOADED'}
+            </span>
+          </div>
+          <div class="grid grid-cols-4 gap-1 font-mono-tac text-[10px] bg-slate-900/80 rounded-lg p-1.5 mb-2 text-center">
+            <div><div class="text-slate-500">SPD</div><div class="text-slate-100 font-bold">${def.speed}"</div></div>
+            <div><div class="text-slate-500">HP</div><div class="text-slate-100 font-bold">d${def.hp}</div></div>
+            <div><div class="text-slate-500">ATK</div><div class="text-amber-300 font-bold">d${def.atk}</div></div>
+            <div><div class="text-slate-500">RNG</div><div class="text-rose-300 font-bold">${def.range}"</div></div>
+          </div>
+          <div class="flex items-center justify-between text-[10px] font-mono-tac mb-2">
+            <span class="${ent.secured ? 'text-emerald-400' : 'text-slate-400'}">${ent.secured ? '✓ Ground Secured' : '○ Not Secured Yet'}</span>
+            ${legs > 0 ? `<span class="text-amber-300 font-bold">${legs} Move Leg(s) Queued</span>` : ''}
+          </div>
+          <p class="text-[11px] text-slate-400 mb-2 leading-snug">${def.notes}</p>
+          ${canAct ? `
+            <div class="space-y-1.5">
+              <button id="act-move-leg" ${canMove ? '' : 'disabled'} class="tac-btn w-full py-1.5 rounded-lg bg-sky-700 hover:bg-sky-600 text-white font-bold text-xs">
+                🧭 ${legs > 0 ? `Chain Move Leg #${legs + 1}` : 'Plot Move Path'} (1 AP)
+              </button>
+              ${ent.type === 'infantry' ? `
+                <button id="act-convert-hub" ${canBuild ? '' : 'disabled'} class="tac-btn w-full py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-white font-bold text-xs">
+                  ⛽ Convert Infantry → Resupply Hub (4 AP)
+                </button>` : ''}
+              ${def.category === 'land' ? `
+                <div class="grid grid-cols-2 gap-1 pt-0.5">
+                  <button data-build="major_base" ${canBuild ? '' : 'disabled'} class="tac-btn py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-[10px] font-bold">Major Base (4 AP)</button>
+                  <button data-build="minor_base" ${canBuild ? '' : 'disabled'} class="tac-btn py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-[10px] font-bold">Minor Base (4 AP)</button>
+                  <button data-build="air_base" ${canBuild ? '' : 'disabled'} class="tac-btn py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-[10px] font-bold">Air Base (4 AP)</button>
+                  <button data-build="port" ${canBuild && isNearWater(ent.x, ent.y, 1.2) ? '' : 'disabled'} class="tac-btn py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-[10px] font-bold">Port (4 AP)</button>
+                </div>` : ''}
+            </div>
+          ` : ''}
+        `;
+
+        if (canMove) {
+          document.getElementById('act-move-leg').onclick = () =>
+            setMode('MOVE', `CLICK WITHIN RANGE TO CHAIN LEG #${legs + 1} (1 AP)`);
+        }
+        const hubBtn = document.getElementById('act-convert-hub');
+        if (hubBtn && canBuild) {
+          hubBtn.onclick = () => queueConstructOrder(ent, 'resupply_hub');
+        }
+        box.querySelectorAll('[data-build]').forEach(btn => {
+          btn.onclick = () => queueConstructOrder(ent, btn.dataset.build);
+        });
+      } else {
+        const def = STRUCTURE_DEFS[ent.type];
+        const canAct = state.phase === 'PLANNING' && isOwn;
+        const busy = ent.cooldown > 0 || isFacilityQueued(ent.id, p);
+        const canProd = canAct && remAP >= 2 && !busy;
+
+        box.innerHTML = `
+          <div class="flex items-center justify-between mb-1">
+            <span class="font-extrabold text-sm text-slate-100">${def.name} <span class="text-[10px] font-mono-tac text-slate-400">(${def.shape})</span></span>
+            <span class="px-1.5 py-0.5 rounded text-[10px] font-mono-tac font-bold bg-slate-800 text-amber-300">HP d${def.hp}</span>
+          </div>
+          <div class="text-[10px] font-mono-tac mb-1.5 ${busy ? 'text-amber-400' : 'text-emerald-400'}">
+            ${ent.cooldown > 0 ? `⏳ Production Cooldown: ${ent.cooldown} turn(s)` : (isFacilityQueued(ent.id, p) ? '📦 Production Queued This Turn' : '✓ Ready for Production / Resupply')}
+          </div>
+          <p class="text-[11px] text-slate-400 mb-2 leading-snug">${def.notes}</p>
+          ${canAct && def.produces.length > 0 ? `
+            <div class="text-[10px] font-mono-tac uppercase text-slate-400 mb-1">Produce Unit (2 AP):</div>
+            <div class="grid grid-cols-2 gap-1">
+              ${def.produces.map(ut => `
+                <button data-prod="${ut}" ${canProd ? '' : 'disabled'} class="tac-btn py-1.5 px-1.5 rounded bg-indigo-900/80 hover:bg-indigo-800 text-indigo-100 text-[10px] font-bold">
+                  + ${UNIT_DEFS[ut].name} (${UNIT_DEFS[ut].prodCooldown}t)
+                </button>`).join('')}
+            </div>
+            ${def.produces.includes('air_def') ? `
+              <button id="act-ad-zone" ${canProd ? '' : 'disabled'} class="tac-btn w-full mt-1.5 py-1.5 rounded-lg bg-emerald-800/80 hover:bg-emerald-700 text-emerald-100 text-[11px] font-bold">
+                🛡️ Deploy Air Defense in 3" Zone (2 AP)
+              </button>` : ''}
+          ` : ''}
+        `;
+
+        box.querySelectorAll('[data-prod]').forEach(btn => {
+          btn.onclick = () => queueProduceOrder(ent, btn.dataset.prod);
+        });
+        const adBtn = document.getElementById('act-ad-zone');
+        if (adBtn && canProd) {
+          adBtn.onclick = () => {
+            state.pendingAdBaseId = ent.id;
+            setMode('DEPLOY_AD_ZONE', 'CLICK LAND WITHIN 3" ESTABLISHED ZONE TO DEPLOY AIR DEFENSE');
+          };
+        }
+      }
+    }
+
+    function renderOrderQueue() {
+      const p = state.activePlayer;
+      const list = state.orders[p];
+      document.getElementById('queue-count').textContent = list.length;
+      const el = document.getElementById('order-queue-list');
+      if (state.phase !== 'PLANNING') {
+        el.innerHTML = '<div class="text-slate-500 italic">Order queue active during Planning Phase.</div>';
+        return;
+      }
+      if (list.length === 0) {
+        el.innerHTML = '<div class="text-slate-500 italic">No secret orders queued yet. (4 AP available)</div>';
+        return;
+      }
+      el.innerHTML = list.map((o, idx) => `
+        <div class="flex items-center justify-between gap-2 px-2 py-1 rounded bg-slate-900/80 border border-slate-700/70">
+          <span class="truncate text-slate-200">${idx + 1}. ${o.label}</span>
+          <span class="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-bold flex-shrink-0">${o.cost} AP</span>
+        </div>
+      `).join('');
+    }
+
+    // --- CANVAS RENDERING ENGINE ---
+    function drawStar(cx, cy, spikes, outerR, innerR) {
+      let rot = (Math.PI / 2) * 3;
+      const step = Math.PI / spikes;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - outerR);
+      for (let i = 0; i < spikes; i++) {
+        ctx.lineTo(cx + Math.cos(rot) * outerR, cy + Math.sin(rot) * outerR);
+        rot += step;
+        ctx.lineTo(cx + Math.cos(rot) * innerR, cy + Math.sin(rot) * innerR);
+        rot += step;
+      }
+      ctx.closePath();
+    }
+
+    function drawHeart(cx, cy, size) {
+      ctx.beginPath();
+      ctx.moveTo(cx, cy + size * 0.55);
+      ctx.bezierCurveTo(cx - size * 1.15, cy - size * 0.2, cx - size * 0.55, cy - size * 1.0, cx, cy - size * 0.3);
+      ctx.bezierCurveTo(cx + size * 0.55, cy - size * 1.0, cx + size * 1.15, cy - size * 0.2, cx, cy + size * 0.55);
+      ctx.closePath();
+    }
+
+    function drawEntityShape(e, px, py, alpha = 1.0) {
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      const fill = pColor(e.owner);
+      const dark = pDark(e.owner);
+      // Crisp, readable icon scaling across 1x-8x zoom on 68"x44" maps
+      const s = Math.max(7.5, Math.min(20, ppi * 0.24));
+
+      ctx.fillStyle = fill;
+      ctx.strokeStyle = '#090e1a';
+      ctx.lineWidth = 2;
+
+      if (e.kind === 'structure') {
+        const bs = s * 1.38;
+        if (e.type === 'main_base') {
+          ctx.beginPath();
+          ctx.moveTo(px, py - bs);
+          ctx.lineTo(px + bs * 0.85, py - bs * 0.55);
+          ctx.lineTo(px + bs * 0.72, py + bs * 0.4);
+          ctx.lineTo(px, py + bs);
+          ctx.lineTo(px - bs * 0.72, py + bs * 0.4);
+          ctx.lineTo(px - bs * 0.85, py - bs * 0.55);
+          ctx.closePath();
+          ctx.fill(); ctx.stroke();
+          ctx.fillStyle = '#ffffff';
+          ctx.font = `bold ${Math.max(9, bs * 0.75)}px Inter`;
+          ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+          ctx.fillText('★', px, py);
+        } else if (e.type === 'major_base') {
+          ctx.beginPath(); ctx.arc(px, py, bs * 0.9, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+          ctx.strokeStyle = dark; ctx.lineWidth = 2;
+          for (let a = 0; a < 4; a++) {
+            const ang = (a * Math.PI) / 4;
+            ctx.beginPath();
+            ctx.moveTo(px - Math.cos(ang) * bs * 0.8, py - Math.sin(ang) * bs * 0.8);
+            ctx.lineTo(px + Math.cos(ang) * bs * 0.8, py + Math.sin(ang) * bs * 0.8);
+            ctx.stroke();
+          }
+          ctx.beginPath(); ctx.arc(px, py, bs * 0.3, 0, Math.PI * 2); ctx.fillStyle = '#fff'; ctx.fill();
+        } else if (e.type === 'minor_base') {
+          ctx.beginPath(); ctx.arc(px, py, bs * 0.8, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+          ctx.beginPath(); ctx.arc(px, py, bs * 0.38, 0, Math.PI * 2); ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.stroke();
+        } else if (e.type === 'port') {
+          drawStar(px, py, 5, bs * 1.05, bs * 0.48); ctx.fill(); ctx.stroke();
+        } else if (e.type === 'air_base') {
+          drawHeart(px, py, bs * 0.95); ctx.fill(); ctx.stroke();
+        } else if (e.type === 'resupply_hub') {
+          ctx.beginPath();
+          ctx.arc(px, py + bs * 0.12, bs * 0.68, 0, Math.PI * 2);
+          ctx.fill(); ctx.stroke();
+          ctx.fillStyle = '#fde68a';
+          ctx.fillRect(px - bs * 0.45, py - bs * 0.65, bs * 0.9, bs * 0.28);
+          ctx.strokeRect(px - bs * 0.45, py - bs * 0.65, bs * 0.9, bs * 0.28);
+        }
+      } else {
+        if (e.type === 'infantry') {
+          ctx.fillRect(px - s * 0.72, py - s * 0.72, s * 1.44, s * 1.44);
+          ctx.strokeRect(px - s * 0.72, py - s * 0.72, s * 1.44, s * 1.44);
+        } else if (e.type === 'specops') {
+          ctx.beginPath();
+          ctx.ellipse(px, py, s * 0.68, s * 0.92, 0, 0, Math.PI * 2);
+          ctx.fill(); ctx.stroke();
+        } else if (e.type === 'light_veh') {
+          ctx.beginPath(); ctx.arc(px, py, s * 0.75, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        } else if (e.type === 'heavy_veh') {
+          ctx.beginPath(); ctx.arc(px, py, s * 1.02, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+          ctx.beginPath(); ctx.arc(px, py, s * 0.52, 0, Math.PI * 2); ctx.fillStyle = dark; ctx.fill();
+        } else if (e.type === 'air_def') {
+          ctx.beginPath();
+          ctx.arc(px, py, s * 0.85, Math.PI, 0);
+          ctx.lineTo(px + s * 0.85, py + s * 0.65);
+          ctx.lineTo(px - s * 0.85, py + s * 0.65);
+          ctx.closePath();
+          ctx.fill(); ctx.stroke();
+          ctx.strokeStyle = dark; ctx.lineWidth = 1.5;
+          ctx.beginPath(); ctx.moveTo(px - s * 0.65, py + s * 0.1); ctx.lineTo(px + s * 0.65, py + s * 0.1); ctx.stroke();
+        } else if (e.type === 'plane') {
+          drawHeart(px, py, s * 0.92); ctx.fill(); ctx.stroke();
+        } else if (e.type === 'ship') {
+          drawStar(px, py, 5, s * 0.95, s * 0.42); ctx.fill(); ctx.stroke();
+        }
+      }
+
+      ctx.restore();
+    }
+
+    function renderFrame(now) {
+      const w = canvas.clientWidth;
+      const h = canvas.clientHeight;
+      ctx.clearRect(0, 0, w, h);
+
+      const mapPxW = MAP_W * ppi;
+      const mapPxH = MAP_H * ppi;
+
+      // 1. Terrain Layer: Custom Offscreen Map OR Default 11x17" Map
+      if (state.customMap && state.customMap.offscreenCanvas) {
+        ctx.save();
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(state.customMap.offscreenCanvas, offsetX, offsetY, mapPxW, mapPxH);
+        ctx.restore();
+      } else {
+        ctx.fillStyle = '#152232';
+        ctx.fillRect(offsetX, offsetY, mapPxW, mapPxH);
+
+        // Water Polygons
+        ctx.save();
+        ctx.fillStyle = '#0c3556';
+        ctx.strokeStyle = '#1e5a88';
+        ctx.lineWidth = 2;
+        for (const poly of WATER_POLYS) {
+          ctx.beginPath();
+          poly.forEach((pt, idx) => {
+            if (idx === 0) ctx.moveTo(toPxX(pt.x), toPxY(pt.y));
+            else ctx.lineTo(toPxX(pt.x), toPxY(pt.y));
+          });
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+        }
+        ctx.restore();
+
+        // Bridges
+        ctx.save();
+        for (const b of BRIDGES) {
+          ctx.fillStyle = '#334155';
+          ctx.strokeStyle = '#94a3b8';
+          ctx.lineWidth = 1.5;
+          ctx.fillRect(toPxX(b.x), toPxY(b.y), b.w * ppi, b.h * ppi);
+          ctx.strokeRect(toPxX(b.x), toPxY(b.y), b.w * ppi, b.h * ppi);
+        }
+        ctx.restore();
+
+        // Highways (+1" Road Bonus)
+        ctx.save();
+        for (const road of ROADS) {
+          ctx.beginPath();
+          road.forEach((pt, idx) => {
+            if (idx === 0) ctx.moveTo(toPxX(pt.x), toPxY(pt.y));
+            else ctx.lineTo(toPxX(pt.x), toPxY(pt.y));
+          });
+          ctx.strokeStyle = '#475569';
+          ctx.lineWidth = Math.max(5, ppi * 0.16);
+          ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+          ctx.stroke();
+
+          ctx.strokeStyle = '#fbbf24';
+          ctx.lineWidth = 1.5;
+          ctx.setLineDash([6, 6]);
+          ctx.stroke();
+          ctx.setLineDash([]);
+        }
+        ctx.restore();
+      }
+
+      // Setup Outskirts Highlight (6.0" from any edge)
+      if (state.phase === 'SETUP') {
+        ctx.save();
+        ctx.strokeStyle = 'rgba(56, 189, 248, 0.45)';
+        ctx.fillStyle = 'rgba(56, 189, 248, 0.08)';
+        const m = EDGE_DEPLOY_IN * ppi;
+        ctx.fillRect(offsetX, offsetY, mapPxW, m);
+        ctx.fillRect(offsetX, offsetY + mapPxH - m, mapPxW, m);
+        ctx.fillRect(offsetX, offsetY + m, m, mapPxH - m * 2);
+        ctx.fillRect(offsetX + mapPxW - m, offsetY + m, m, mapPxH - m * 2);
+        ctx.strokeRect(offsetX + m, offsetY + m, mapPxW - m * 2, mapPxH - m * 2);
+        ctx.restore();
+      }
+
+      // 2. Smart Inch Grid & Coordinate Labels (4" major at 1x, 1" minor when zoomed in)
+      ctx.save();
+      const showMinor = ppi >= 18;
+      if (showMinor) {
+        ctx.strokeStyle = state.customMap ? 'rgba(226, 232, 240, 0.08)' : 'rgba(148, 163, 184, 0.08)';
+        ctx.lineWidth = 1;
+        for (let x = 0; x <= Math.floor(MAP_W); x++) {
+          if (x % 4 === 0) continue;
+          const px = toPxX(x);
+          ctx.beginPath(); ctx.moveTo(px, offsetY); ctx.lineTo(px, offsetY + mapPxH); ctx.stroke();
+        }
+        for (let y = 0; y <= Math.floor(MAP_H); y++) {
+          if (y % 4 === 0) continue;
+          const py = toPxY(y);
+          ctx.beginPath(); ctx.moveTo(offsetX, py); ctx.lineTo(offsetX + mapPxW, py); ctx.stroke();
+        }
+      }
+
+      const majorStep = ppi >= 26 ? 2 : 4;
+      ctx.strokeStyle = state.customMap ? 'rgba(226, 232, 240, 0.16)' : 'rgba(148, 163, 184, 0.15)';
+      ctx.lineWidth = 1;
+      ctx.font = '10px "JetBrains Mono", monospace';
+      ctx.fillStyle = '#64748b';
+      for (let x = 0; x <= Math.floor(MAP_W); x += majorStep) {
+        const px = toPxX(x);
+        ctx.beginPath(); ctx.moveTo(px, offsetY); ctx.lineTo(px, offsetY + mapPxH); ctx.stroke();
+        if (px >= 12 && px <= w - 12) {
+          ctx.textAlign = 'center';
+          ctx.fillText(`${x}"`, px, Math.max(12, offsetY - 8));
+        }
+      }
+      for (let y = 0; y <= Math.floor(MAP_H); y += majorStep) {
+        const py = toPxY(y);
+        ctx.beginPath(); ctx.moveTo(offsetX, py); ctx.lineTo(offsetX + mapPxW, py); ctx.stroke();
+        if (py >= 14 && py <= h - 6) {
+          ctx.textAlign = 'right';
+          ctx.fillText(`${y}"`, Math.max(24, offsetX - 6), py + 3);
+        }
+      }
+      ctx.strokeStyle = '#334155';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(offsetX, offsetY, mapPxW, mapPxH);
+      ctx.restore();
+
+      // 3. Imported Landmark Pins (Custom Map)
+      if (state.customMap && state.showPins && state.customMap.pins.length > 0) {
+        const cm = state.customMap;
+        ctx.save();
+        for (const pin of cm.pins) {
+          const ix = ((pin.col + 0.5) / cm.cols) * MAP_W;
+          const iy = ((pin.row + 0.5) / cm.rows) * MAP_H;
+          const px = toPxX(ix);
+          const py = toPxY(iy);
+
+          ctx.beginPath();
+          ctx.arc(px, py, 4, 0, Math.PI * 2);
+          ctx.fillStyle = '#f43f5e';
+          ctx.fill();
+          ctx.lineWidth = 1.5;
+          ctx.strokeStyle = '#ffffff';
+          ctx.stroke();
+
+          ctx.font = '600 10px Inter, sans-serif';
+          const tw = ctx.measureText(pin.name).width;
+          const bx = px - (tw + 10) / 2;
+          const by = py - 22;
+
+          ctx.fillStyle = 'rgba(2, 6, 23, 0.80)';
+          ctx.beginPath();
+          if (ctx.roundRect) ctx.roundRect(bx, by, tw + 10, 16, 4);
+          else ctx.rect(bx, by, tw + 10, 16);
+          ctx.fill();
+          ctx.strokeStyle = 'rgba(244, 63, 94, 0.65)';
+          ctx.lineWidth = 1;
+          ctx.stroke();
+
+          ctx.fillStyle = '#f8fafc';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(pin.name, px, by + 8.5);
+        }
+        ctx.restore();
+      }
+
+      // 4. Toggleable 3" Established Zones
+      if (state.showZones) {
+        ctx.save();
+        for (const e of state.entities) {
+          if (e.kind === 'structure' && STRUCTURE_DEFS[e.type].isBase) {
+            ctx.beginPath();
+            ctx.arc(toPxX(e.x), toPxY(e.y), ESTABLISHED_ZONE_IN * ppi, 0, Math.PI * 2);
+            ctx.fillStyle = e.owner === 1 ? 'rgba(56, 189, 248, 0.06)' : 'rgba(251, 113, 133, 0.06)';
+            ctx.fill();
+            ctx.strokeStyle = e.owner === 1 ? 'rgba(56, 189, 248, 0.35)' : 'rgba(251, 113, 133, 0.35)';
+            ctx.setLineDash([4, 4]);
+            ctx.stroke();
+            ctx.setLineDash([]);
+          }
+        }
+        ctx.restore();
+      }
+
+      // 5. Toggleable Automatic Engagement Radii (Loaded units only)
+      if (state.showRanges) {
+        ctx.save();
+        for (const e of state.entities) {
+          if (e.kind === 'unit' && !e.ammoSpent) {
+            const rng = UNIT_DEFS[e.type].range * ppi;
+            ctx.beginPath();
+            ctx.arc(toPxX(e.x), toPxY(e.y), rng, 0, Math.PI * 2);
+            ctx.strokeStyle = e.owner === 1 ? 'rgba(56, 189, 248, 0.35)' : 'rgba(251, 113, 133, 0.35)';
+            ctx.lineWidth = 1.2;
+            ctx.setLineDash([2, 4]);
+            ctx.stroke();
+            ctx.setLineDash([]);
+          }
+        }
+        ctx.restore();
+      }
+
+      // 6. Ruins
+      for (const r of state.ruins) {
+        const px = toPxX(r.x), py = toPxY(r.y);
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(px, py, Math.max(10, ppi * 0.25), 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(30, 41, 59, 0.85)';
+        ctx.fill();
+        ctx.strokeStyle = r.cooldown === 0 ? '#10b981' : '#f59e0b';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([3, 3]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = r.cooldown === 0 ? '#34d399' : '#fbbf24';
+        ctx.font = 'bold 9px "JetBrains Mono", monospace';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(r.cooldown === 0 ? 'FIX' : `${r.cooldown}t`, px, py);
+        ctx.restore();
+      }
+
+      // 7. Secret Orders Visualization (Active Player Only during Planning)
+      if (state.phase === 'PLANNING') {
+        const p = state.activePlayer;
+        const movesByUnit = new Map();
+        for (const o of state.orders[p]) {
+          if (o.type === 'MOVE') {
+            if (!movesByUnit.has(o.unitId)) movesByUnit.set(o.unitId, []);
+            movesByUnit.get(o.unitId).push(o);
+          } else if (o.type === 'MISSILE') {
+            const tx = toPxX(o.targetX), ty = toPxY(o.targetY);
+            ctx.save();
+            ctx.strokeStyle = '#f59e0b';
+            ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.arc(tx, ty, 16, 0, Math.PI * 2); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(tx - 20, ty); ctx.lineTo(tx + 20, ty); ctx.moveTo(tx, ty - 20); ctx.lineTo(tx, ty + 20); ctx.stroke();
+            ctx.restore();
+          } else if (o.type === 'DEPLOY_AD') {
+            const dx = toPxX(o.x), dy = toPxY(o.y);
+            ctx.save();
+            ctx.strokeStyle = '#10b981'; ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.arc(dx, dy, 12, 0, Math.PI * 2); ctx.stroke();
+            ctx.restore();
+          }
+        }
+
+        for (const [unitId, legs] of movesByUnit.entries()) {
+          const unit = getEntityById(unitId);
+          if (!unit) continue;
+          ctx.save();
+          ctx.strokeStyle = '#fbbf24';
+          ctx.lineWidth = 2.5;
+          ctx.setLineDash([6, 4]);
+          ctx.beginPath();
+          ctx.moveTo(toPxX(legs[0].fromX), toPxY(legs[0].fromY));
+          for (const leg of legs) {
+            ctx.lineTo(toPxX(leg.toX), toPxY(leg.toY));
+          }
+          ctx.stroke();
+          ctx.setLineDash([]);
+
+          legs.forEach((leg, i) => {
+            const wx = toPxX(leg.toX), wy = toPxY(leg.toY);
+            ctx.beginPath();
+            ctx.arc(wx, wy, 9, 0, Math.PI * 2);
+            ctx.fillStyle = '#0f172a';
+            ctx.fill();
+            ctx.strokeStyle = '#fbbf24';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            ctx.fillStyle = '#fde68a';
+            ctx.font = 'bold 9px "JetBrains Mono", monospace';
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.fillText(`${i + 1}`, wx, wy);
+          });
+
+          const finalLeg = legs[legs.length - 1];
+          drawEntityShape(unit, toPxX(finalLeg.toX), toPxY(finalLeg.toY), 0.42);
+          ctx.restore();
+        }
+      }
+
+      // 8. Entities
+      for (const e of state.entities) {
+        const px = toPxX(e.x), py = toPxY(e.y);
+        if (state.selectedId === e.id) {
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(px, py, Math.max(14, Math.min(26, ppi * 0.36)), 0, Math.PI * 2);
+          ctx.strokeStyle = '#fde047';
+          ctx.lineWidth = 2.5;
+          ctx.stroke();
+          ctx.restore();
+        }
+
+        drawEntityShape(e, px, py, 1.0);
+
+        ctx.save();
+        if (e.kind === 'unit') {
+          if (e.ammoSpent) {
+            ctx.fillStyle = '#ef4444';
+            ctx.beginPath(); ctx.arc(px + 9, py - 9, 5.5, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#fff'; ctx.font = 'bold 7px monospace';
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.fillText('S', px + 9, py - 9);
+          }
+          if (e.secured) {
+            ctx.fillStyle = '#10b981';
+            ctx.beginPath(); ctx.arc(px - 9, py - 9, 5, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#022c22'; ctx.font = 'bold 7px monospace';
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.fillText('✓', px - 9, py - 9);
+          }
+        } else if (e.cooldown > 0) {
+          ctx.fillStyle = '#f59e0b';
+          ctx.fillRect(px + 5, py - 15, 16, 11);
+          ctx.fillStyle = '#0f172a'; ctx.font = 'bold 8px monospace';
+          ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+          ctx.fillText(`${e.cooldown}t`, px + 13, py - 9.5);
+        }
+        ctx.restore();
+      }
+
+      // 9. Live Movement Range Ring, Inch Ruler & Building Collision Preview
+      if (state.phase === 'PLANNING') {
+        const sel = getEntityById(state.selectedId);
+        if (sel && sel.kind === 'unit' && sel.owner === state.activePlayer && getRemainingAP(state.activePlayer) >= 1 && !hasUnitFullTurnOrder(sel.id, state.activePlayer)) {
+          const from = getPlannedPos(sel, state.activePlayer);
+          const def = UNIT_DEFS[sel.type];
+          const spd = state.hoverMap ? getLegSpeed(sel, from.x, from.y, state.hoverMap.x, state.hoverMap.y) : getLegSpeed(sel, from.x, from.y);
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(toPxX(from.x), toPxY(from.y), spd * ppi, 0, Math.PI * 2);
+          ctx.fillStyle = 'rgba(250, 204, 21, 0.08)';
+          ctx.fill();
+          ctx.strokeStyle = 'rgba(250, 204, 21, 0.65)';
+          ctx.lineWidth = 1.6;
+          ctx.setLineDash([5, 4]);
+          ctx.stroke();
+          ctx.setLineDash([]);
+
+          if (state.hoverMap) {
+            const d = distIn(from.x, from.y, state.hoverMap.x, state.hoverMap.y);
+            let blockInfo = { blocked: false };
+            if (def.category === 'land') {
+              blockInfo = traceLandPath(from.x, from.y, state.hoverMap.x, state.hoverMap.y);
+            } else if (def.category === 'sea') {
+              blockInfo = traceSeaPath(from.x, from.y, state.hoverMap.x, state.hoverMap.y);
+            }
+
+            const validLeg = !blockInfo.blocked && d <= spd + 0.05;
+            ctx.beginPath();
+            ctx.moveTo(toPxX(from.x), toPxY(from.y));
+            ctx.lineTo(toPxX(state.hoverMap.x), toPxY(state.hoverMap.y));
+            ctx.strokeStyle = blockInfo.blocked ? '#ef4444' : (validLeg ? '#34d399' : '#fb7185');
+            ctx.lineWidth = blockInfo.blocked ? 2.4 : 1.8;
+            ctx.stroke();
+
+            // Draw bright red X & tooltip pill at exact building/water collision point
+            if (blockInfo.blocked) {
+              const bx = toPxX(blockInfo.x);
+              const by = toPxY(blockInfo.y);
+              ctx.strokeStyle = '#ef4444';
+              ctx.lineWidth = 2.6;
+              ctx.beginPath();
+              ctx.moveTo(bx - 6, by - 6); ctx.lineTo(bx + 6, by + 6);
+              ctx.moveTo(bx + 6, by - 6); ctx.lineTo(bx - 6, by + 6);
+              ctx.stroke();
+
+              const label = blockInfo.reason === 'BUILDING' ? 'BLOCKED: BUILDING' : `BLOCKED: ${blockInfo.reason}`;
+              ctx.font = 'bold 10px "JetBrains Mono", monospace';
+              const tw = ctx.measureText(label).width;
+              const pillX = bx - (tw + 10) / 2;
+              const pillY = by - 25;
+              ctx.fillStyle = 'rgba(127, 29, 29, 0.94)';
+              ctx.beginPath();
+              if (ctx.roundRect) ctx.roundRect(pillX, pillY, tw + 10, 17, 4);
+              else ctx.rect(pillX, pillY, tw + 10, 17);
+              ctx.fill();
+              ctx.strokeStyle = '#f87171';
+              ctx.lineWidth = 1;
+              ctx.stroke();
+              ctx.fillStyle = '#fecaca';
+              ctx.textAlign = 'center';
+              ctx.textBaseline = 'middle';
+              ctx.fillText(label, bx, pillY + 9);
+            }
+          }
+          ctx.restore();
+        }
+      }
+
+      // 10. Visual Combat & Resupply Effects
+      state.effects = state.effects.filter(fx => now - fx.createdAt < fx.duration);
+      for (const fx of state.effects) {
+        const p = (now - fx.createdAt) / fx.duration;
+        ctx.save();
+        ctx.globalAlpha = Math.max(0, 1 - p);
+        if (fx.type === 'beam') {
+          ctx.strokeStyle = fx.color;
+          ctx.lineWidth = 3.5 * (1 - p * 0.5);
+          ctx.beginPath();
+          ctx.moveTo(toPxX(fx.x1), toPxY(fx.y1));
+          ctx.lineTo(toPxX(fx.x2), toPxY(fx.y2));
+          ctx.stroke();
+        } else if (fx.type === 'boom') {
+          ctx.beginPath();
+          ctx.arc(toPxX(fx.x), toPxY(fx.y), 6 + p * 28, 0, Math.PI * 2);
+          ctx.strokeStyle = fx.color;
+          ctx.lineWidth = 3;
+          ctx.stroke();
+        } else if (fx.type === 'text') {
+          ctx.font = 'bold 11px "JetBrains Mono", monospace';
+          ctx.textAlign = 'center';
+          ctx.fillStyle = '#090e1a';
+          ctx.fillText(fx.text, toPxX(fx.x) + 1, toPxY(fx.y) - p * 22 + 1);
+          ctx.fillStyle = fx.color;
+          ctx.fillText(fx.text, toPxX(fx.x), toPxY(fx.y) - p * 22);
+        }
+        ctx.restore();
+      }
+
+      requestAnimationFrame(renderFrame);
+    }
+
+    // --- RESET CAMPAIGN ---
+    function resetCampaign(logMsg = true) {
+      state.phase = 'SETUP';
+      state.setupStep = 0;
+      state.turn = 1;
+      state.activePlayer = 1;
+      state.missiles = { 1: 6, 2: 6 };
+      state.orders = { 1: [], 2: [] };
+      state.entities = [];
+      state.ruins = [];
+      state.selectedId = null;
+      state.mode = 'IDLE';
+      state.effects = [];
+      state.stats = { kills: { 1: 0, 2: 0 }, missilesFired: { 1: 0, 2: 0 } };
+      document.getElementById('victory-modal').classList.add('hidden');
+      document.getElementById('resolution-banner').classList.add('hidden');
+      document.getElementById('setup-banner').classList.remove('hidden');
+      document.getElementById('combat-log').innerHTML = '';
+      if (logMsg) {
+        addLog('New v2.1 WEGO campaign initialized. Deploy 2 Original Main Bases per player.', 'amber');
+      }
+      updateUI();
+    }
+
+    // --- CUSTOM MAP MODAL HANDLERS ---
+    const mapModal = document.getElementById('map-upload-modal');
+    const mapDropZone = document.getElementById('map-drop-zone');
+    const mapFileInput = document.getElementById('map-file-input');
+    const mapPasteTextarea = document.getElementById('map-paste-textarea');
+
+    function openMapModal() {
+      mapModal.classList.remove('hidden');
+      SFX.play('click');
+    }
+
+    function closeMapModal() {
+      mapModal.classList.add('hidden');
+    }
+
+    function handleMapFile(file) {
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          const parsed = parseAnyMapText(String(reader.result || ''), file.name);
+          applyCustomMap(parsed);
+          closeMapModal();
+          SFX.play('lock');
+        } catch (err) {
+          console.error(err);
+          showToast(err.message || 'Failed to parse map file.', 'danger');
+          SFX.play('miss');
+        }
+      };
+      reader.onerror = () => {
+        showToast('Could not read the selected file.', 'danger');
+      };
+      reader.readAsText(file);
+    }
+
+    document.getElementById('btn-open-map-hud').addEventListener('click', openMapModal);
+    document.getElementById('btn-open-map-setup').addEventListener('click', openMapModal);
+    document.getElementById('btn-close-map-modal').addEventListener('click', closeMapModal);
+
+    mapDropZone.addEventListener('click', () => mapFileInput.click());
+    mapDropZone.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        mapFileInput.click();
+      }
+    });
+    mapFileInput.addEventListener('change', (e) => {
+      if (e.target.files?.[0]) handleMapFile(e.target.files[0]);
+      e.target.value = '';
+    });
+    ['dragenter', 'dragover'].forEach(evt => {
+      mapDropZone.addEventListener(evt, (e) => {
+        e.preventDefault(); e.stopPropagation();
+        mapDropZone.classList.add('border-teal-400', 'bg-teal-950/30');
+      });
+    });
+    ['dragleave', 'drop'].forEach(evt => {
+      mapDropZone.addEventListener(evt, (e) => {
+        e.preventDefault(); e.stopPropagation();
+        mapDropZone.classList.remove('border-teal-400', 'bg-teal-950/30');
+      });
+    });
+    mapDropZone.addEventListener('drop', (e) => {
+      const file = e.dataTransfer?.files?.[0];
+      if (file) handleMapFile(file);
+    });
+
+    document.getElementById('btn-load-pasted-map').addEventListener('click', () => {
+      try {
+        const parsed = parseAnyMapText(mapPasteTextarea.value, 'pasted-map.txt');
+        applyCustomMap(parsed);
+        closeMapModal();
+        SFX.play('lock');
+      } catch (err) {
+        console.error(err);
+        showToast(err.message || 'Could not parse pasted map text.', 'danger');
+        SFX.play('miss');
+      }
+    });
+
+    document.getElementById('btn-load-nyc-sample').addEventListener('click', () => {
+      try {
+        const nycTxt = generateSampleNYCConvertedTxt();
+        const parsed = parseCompactTxtMap(nycTxt, 'nyc-manhattan-sample.3mf');
+        applyCustomMap(parsed);
+        closeMapModal();
+        SFX.play('lock');
+      } catch (err) {
+        console.error(err);
+        showToast('Failed to load NYC sample map.', 'danger');
+      }
+    });
+
+    document.getElementById('btn-reset-default-map').addEventListener('click', () => {
+      resetToDefaultMap();
+      closeMapModal();
+      SFX.play('click');
+    });
+
+    // --- EVENT LISTENERS (INCLUDING 1x-8x PAN & ZOOM) ---
+    window.addEventListener('resize', resizeCanvas);
+    canvas.addEventListener('click', handleCanvasClick);
+
+    canvas.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const factor = e.deltaY < 0 ? 1.18 : 1 / 1.18;
+      zoomAtPoint(factor, e.clientX, e.clientY);
+    }, { passive: false });
+
+    canvas.addEventListener('mousedown', (e) => {
+      if (state.panToolActive || state.spaceDown || e.button === 1) {
+        e.preventDefault();
+        state.isPanning = true;
+        state.didDragPan = false;
+        state.dragStartX = e.clientX;
+        state.dragStartY = e.clientY;
+        state.panStartX = state.panX;
+        state.panStartY = state.panY;
+        canvas.style.cursor = 'grabbing';
+      }
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (state.isPanning) {
+        const dx = e.clientX - state.dragStartX;
+        const dy = e.clientY - state.dragStartY;
+        if (Math.hypot(dx, dy) > 3) state.didDragPan = true;
+        state.panX = state.panStartX + dx;
+        state.panY = state.panStartY + dy;
+        updateCameraTransform();
+        return;
+      }
+      const rect = canvas.getBoundingClientRect();
+      if (e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom) {
+        handleCanvasMove(e);
+      }
+    });
+
+    window.addEventListener('mouseup', () => {
+      if (state.isPanning) {
+        state.isPanning = false;
+        canvas.style.cursor = (state.panToolActive || state.spaceDown) ? 'grab' : 'crosshair';
+      }
+    });
+
+    // Pan & Zoom Toolbar Buttons
+    const panBtn = document.getElementById('btn-pan-mode');
+    panBtn.addEventListener('click', () => {
+      state.panToolActive = !state.panToolActive;
+      panBtn.classList.toggle('bg-teal-600', state.panToolActive);
+      panBtn.classList.toggle('text-white', state.panToolActive);
+      panBtn.classList.toggle('text-slate-300', !state.panToolActive);
+      canvas.style.cursor = state.panToolActive ? 'grab' : 'crosshair';
+    });
+    document.getElementById('btn-zoom-in').addEventListener('click', () => zoomAtPoint(1.35));
+    document.getElementById('btn-zoom-out').addEventListener('click', () => zoomAtPoint(1 / 1.35));
+    document.getElementById('btn-reset-view').addEventListener('click', resetCameraView);
+
+    // Touch support (tap to act/select, drag when Pan mode is active)
+    canvas.addEventListener('touchstart', (e) => {
+      if (e.touches.length === 1) {
+        e.preventDefault();
+        const t = e.touches[0];
+        if (state.panToolActive) {
+          state.isPanning = true;
+          state.dragStartX = t.clientX;
+          state.dragStartY = t.clientY;
+          state.panStartX = state.panX;
+          state.panStartY = state.panY;
+        } else {
+          updateTelemetryAt(t.clientX, t.clientY);
+          processMapClick(t.clientX, t.clientY);
+        }
+      }
+    }, { passive: false });
+    canvas.addEventListener('touchmove', (e) => {
+      if (e.touches.length === 1) {
+        e.preventDefault();
+        const t = e.touches[0];
+        if (state.isPanning) {
+          state.panX = state.panStartX + (t.clientX - state.dragStartX);
+          state.panY = state.panStartY + (t.clientY - state.dragStartY);
+          updateCameraTransform();
+        } else {
+          updateTelemetryAt(t.clientX, t.clientY);
+        }
+      }
+    }, { passive: false });
+    canvas.addEventListener('touchend', () => {
+      state.isPanning = false;
+    });
+
+    document.getElementById('btn-auto-deploy').addEventListener('click', autoDeploySetup);
+    document.getElementById('btn-lock-orders').addEventListener('click', lockActivePlayerOrders);
+    document.getElementById('btn-next-turn').addEventListener('click', beginNextTurn);
+    document.getElementById('btn-undo-order').addEventListener('click', undoLastOrder);
+    document.getElementById('btn-clear-orders').addEventListener('click', clearAllOrders);
+    document.getElementById('btn-cancel-mode').addEventListener('click', () => setMode('IDLE'));
+    document.getElementById('btn-play-again').addEventListener('click', () => resetCampaign(true));
+    document.getElementById('btn-clear-log').addEventListener('click', () => {
+      document.getElementById('combat-log').innerHTML = '';
+    });
+
+    document.getElementById('btn-launch-missile').addEventListener('click', () => {
+      if (state.phase === 'PLANNING') {
+        setMode('MISSILE', 'SELECT ENEMY TARGET FOR MISSILE STRIKE (1 AP, CANNOT HIT MAIN BASES)');
+      }
+    });
+
+    document.getElementById('btn-toggle-zones').addEventListener('click', (e) => {
+      state.showZones = !state.showZones;
+      e.target.textContent = `Zones: ${state.showZones ? 'ON' : 'OFF'}`;
+    });
+
+    document.getElementById('btn-toggle-ranges').addEventListener('click', (e) => {
+      state.showRanges = !state.showRanges;
+      e.target.textContent = `Engage: ${state.showRanges ? 'ON' : 'OFF'}`;
+    });
+
+    document.getElementById('btn-toggle-pins').addEventListener('click', (e) => {
+      state.showPins = !state.showPins;
+      e.target.textContent = `Pins: ${state.showPins ? 'ON' : 'OFF'}`;
+    });
+
+    document.getElementById('btn-toggle-sound').addEventListener('click', (e) => {
+      SFX.enabled = !SFX.enabled;
+      e.target.textContent = SFX.enabled ? '🔊' : '🔇';
+    });
+
+    document.getElementById('btn-rules').addEventListener('click', () => {
+      document.getElementById('rules-modal').classList.remove('hidden');
+    });
+    document.getElementById('btn-close-rules').addEventListener('click', () => {
+      document.getElementById('rules-modal').classList.add('hidden');
+    });
+
+    window.addEventListener('keydown', (e) => {
+      if (e.code === 'Space' && document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA') {
+        e.preventDefault();
+        state.spaceDown = true;
+        if (!state.isPanning) canvas.style.cursor = 'grab';
+      }
+      if (e.key === 'Escape') {
+        setMode('IDLE');
+        document.getElementById('rules-modal').classList.add('hidden');
+        closeMapModal();
+      }
+    });
+    window.addEventListener('keyup', (e) => {
+      if (e.code === 'Space') {
+        state.spaceDown = false;
+        if (!state.isPanning) canvas.style.cursor = state.panToolActive ? 'grab' : 'crosshair';
+      }
+    });
+
+    // --- BOOT ---
+    window.onload = function () {
+      resizeCanvas();
+      addLog('Welcome to <strong>Tactical Map War Game v2.1 (4× Scale 68"×44")</strong>. Place Main Bases, click Quick Auto-Deploy, or click <strong>🗺️ Map</strong> to upload a converted map.', 'amber');
+      updateUI();
+      requestAnimationFrame(renderFrame);
+    };
+  </script>
+</body>
+</html>

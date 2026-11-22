@@ -1,0 +1,98 @@
+:root {
+  --bg-deep: #090e1a;
+  --bg-panel: #111827;
+  --bg-card: #182235;
+  --border-tac: #28354d;
+  --p1-color: #38bdf8;
+  --p2-color: #fb7185;
+  --accent-amber: #f59e0b;
+  --accent-emerald: #10b981;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  background-color: var(--bg-deep);
+  color: #e2e8f0;
+  overflow-x: hidden;
+}
+
+.font-mono-tac {
+  font-family: 'JetBrains Mono', monospace;
+}
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: #0f172a; }
+::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #475569; }
+
+.tac-btn {
+  position: relative;
+  transition: all 0.16s ease;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+.tac-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.14);
+}
+.tac-btn:active:not(:disabled) {
+  transform: translateY(0px);
+}
+.tac-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  filter: grayscale(0.5);
+}
+
+.ap-pip {
+  width: 13px;
+  height: 13px;
+  border-radius: 3px;
+  transform: rotate(45deg);
+  transition: all 0.22s ease;
+}
+.ap-pip.active-p1 {
+  background: #38bdf8;
+  box-shadow: 0 0 10px rgba(56, 189, 248, 0.8);
+  border: 1px solid #bae6fd;
+}
+.ap-pip.active-p2 {
+  background: #fb7185;
+  box-shadow: 0 0 10px rgba(251, 113, 133, 0.8);
+  border: 1px solid #fecdd3;
+}
+.ap-pip.queued {
+  background: #f59e0b;
+  box-shadow: 0 0 8px rgba(245, 158, 11, 0.65);
+  border: 1px solid #fde68a;
+}
+.ap-pip.empty {
+  background: #1e293b;
+  border: 1px solid #475569;
+}
+
+#canvas-wrapper {
+  position: relative;
+  background: radial-gradient(circle at center, #131f33 0%, #090e1a 100%);
+  border: 1px solid #28354d;
+  box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.7);
+}
+
+canvas {
+  display: block;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+@keyframes toastPop {
+  0% { opacity: 0; transform: translate(-50%, -14px) scale(0.96); }
+  10% { opacity: 1; transform: translate(-50%, 0) scale(1); }
+  88% { opacity: 1; transform: translate(-50%, 0) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -8px) scale(0.98); }
+}
+.toast-animate {
+  animation: toastPop 3.6s ease forwards;
+}

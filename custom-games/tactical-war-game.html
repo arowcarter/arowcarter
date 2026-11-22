@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tactical Map War Game v2.1 — WEGO, Auto-Engagement & Multi-Action</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="tactical-war-game.css" />
+</head>
+<body class="min-h-screen flex flex-col select-none">
+
+  <!-- TOP COMMAND HUD BAR -->
+  <header class="w-full bg-[#0f172a] border-b border-slate-700/80 px-3 py-2 flex flex-wrap items-center justify-between gap-2 z-30 shadow-lg">
+    <div class="flex items-center gap-3 flex-wrap">
+      <div class="flex items-center gap-2">
+        <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-sky-500/20 to-indigo-600/30 border border-sky-400/40 flex items-center justify-center">
+          <svg class="w-5 h-5 text-sky-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+          </svg>
+        </div>
+        <div>
+          <h1 class="text-sm sm:text-base font-extrabold tracking-wider uppercase text-slate-100 leading-tight">Tactical Map War Game</h1>
+          <div class="text-[10px] font-mono-tac text-sky-400 tracking-widest">v2.1 • WEGO, AUTO-ENGAGE & MULTI-ACTION (11×17")</div>
+        </div>
+      </div>
+
+      <div id="hud-player-pill" class="px-3 py-1.5 rounded-lg border flex items-center gap-2 font-bold text-xs sm:text-sm tracking-wide transition-all">
+        <span id="hud-player-dot" class="w-2.5 h-2.5 rounded-full"></span>
+        <span id="hud-player-text">PLAYER 1 (BLUE)</span>
+        <span id="hud-phase-badge" class="ml-1 px-1.5 py-0.5 rounded text-[10px] font-mono-tac bg-slate-800/90 text-amber-300 border border-amber-500/40">SETUP</span>
+      </div>
+    </div>
+
+    <div class="flex items-center gap-2.5 sm:gap-3.5 flex-wrap">
+      <div class="bg-slate-900/90 border border-slate-700/80 rounded-lg px-2.5 py-1 flex items-center gap-3">
+        <div>
+          <div class="text-[9px] font-mono-tac uppercase text-slate-400">Turn</div>
+          <div id="hud-turn" class="text-sm font-mono-tac font-bold text-slate-100">1</div>
+        </div>
+        <div class="h-6 w-px bg-slate-700"></div>
+        <div>
+          <div class="text-[9px] font-mono-tac uppercase text-slate-400">Restock</div>
+          <div id="hud-restock" class="text-xs font-mono-tac font-semibold text-amber-400">In 5t</div>
+        </div>
+      </div>
+
+      <div class="bg-slate-900/90 border border-slate-700/80 rounded-lg px-3 py-1.5 flex items-center gap-2.5" title="4 AP per player per Planning Phase">
+        <span class="text-[10px] font-mono-tac uppercase text-slate-400 font-semibold">AP</span>
+        <div id="hud-ap-pips" class="flex items-center gap-2">
+          <div class="ap-pip active-p1"></div>
+          <div class="ap-pip active-p1"></div>
+          <div class="ap-pip active-p1"></div>
+          <div class="ap-pip active-p1"></div>
+        </div>
+        <span id="hud-ap-text" class="text-xs font-mono-tac font-bold text-slate-200 ml-0.5">4/4</span>
+      </div>
+
+      <div class="flex items-center gap-1.5">
+        <div class="bg-slate-900/90 border border-slate-700/80 rounded-lg px-2.5 py-1 flex items-center gap-1.5" title="Available Missiles (+1 every 5 turns)">
+          <span class="text-amber-400 text-sm">🚀</span>
+          <span id="hud-missiles" class="text-sm font-mono-tac font-bold text-amber-300">6</span>
+        </div>
+        <button id="btn-launch-missile" class="tac-btn px-2.5 py-1.5 rounded-lg bg-gradient-to-b from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 text-white text-xs font-bold tracking-wide flex items-center gap-1.5">
+          <span>QUEUE MISSILE</span>
+          <span class="text-[10px] font-mono-tac bg-black/30 px-1 rounded">1 AP</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+      <button id="btn-toggle-zones" class="tac-btn px-2 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-emerald-300 text-xs font-semibold" title="Toggle 3-inch Established Zones">
+        Zones: ON
+      </button>
+      <button id="btn-toggle-ranges" class="tac-btn px-2 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-rose-300 text-xs font-semibold" title="Toggle Automatic Engagement Radii">
+        Engage: ON
+      </button>
+      <button id="btn-toggle-sound" class="tac-btn px-2 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold" title="Toggle Tactical Audio">
+        🔊
+      </button>
+      <button id="btn-rules" class="tac-btn px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-sky-300 text-xs font-bold">
+        📖 Manual
+      </button>
+      <button id="btn-lock-orders" class="tac-btn px-3 py-1.5 rounded-lg bg-gradient-to-b from-emerald-600 to-emerald-700 hover:from-emerald-500 hover:to-emerald-600 text-white text-xs font-extrabold tracking-wider uppercase">
+        Lock Orders 🔒
+      </button>
+    </div>
+  </header>
+
+  <!-- SETUP BANNER -->
+  <div id="setup-banner" class="w-full bg-gradient-to-r from-indigo-950 via-slate-900 to-indigo-950 border-b border-sky-500/40 px-4 py-2 flex flex-wrap items-center justify-between gap-2 text-xs sm:text-sm">
+    <div class="flex items-center gap-2">
+      <span class="px-2 py-0.5 rounded bg-sky-500/20 border border-sky-400/50 text-sky-300 font-mono-tac font-bold text-xs">DEPLOYMENT</span>
+      <span id="setup-instruction" class="text-slate-200 font-medium">Player 1 (Blue): Place Main Base #1 on land within 1.5" of any map edge.</span>
+    </div>
+    <button id="btn-auto-deploy" class="tac-btn px-3 py-1 rounded-lg bg-gradient-to-b from-sky-600 to-blue-700 hover:from-sky-500 hover:to-blue-600 text-white text-xs font-bold">
+      ⚡ Quick Auto-Deploy
+    </button>
+  </div>
+
+  <!-- RESOLUTION STEPPER BANNER -->
+  <div id="resolution-banner" class="hidden w-full bg-gradient-to-r from-amber-950/90 via-slate-900 to-amber-950/90 border-b border-amber-500/50 px-4 py-2 flex flex-wrap items-center justify-between gap-2 text-xs">
+    <div class="flex items-center gap-2 flex-wrap">
+      <span class="px-2 py-0.5 rounded bg-amber-500/20 border border-amber-400/60 text-amber-300 font-mono-tac font-bold">WEGO RESOLUTION</span>
+      <div id="res-steps" class="flex items-center gap-1.5 font-mono-tac text-[11px]">
+        <span data-step="1" class="px-2 py-0.5 rounded bg-slate-800 text-slate-400">1. Move & Resupply</span>
+        <span class="text-slate-600">→</span>
+        <span data-step="2" class="px-2 py-0.5 rounded bg-slate-800 text-slate-400">2. Auto-Engage</span>
+        <span class="text-slate-600">→</span>
+        <span data-step="3" class="px-2 py-0.5 rounded bg-slate-800 text-slate-400">3. Missiles</span>
+        <span class="text-slate-600">→</span>
+        <span data-step="4" class="px-2 py-0.5 rounded bg-slate-800 text-slate-400">4. Logistics</span>
+      </div>
+    </div>
+    <button id="btn-next-turn" class="hidden tac-btn px-3.5 py-1 rounded-lg bg-gradient-to-b from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 text-white font-extrabold text-xs uppercase tracking-wider">
+      Begin Next Turn (Pass to P1) ▶
+    </button>
+  </div>
+
+  <!-- MAIN WORKSPACE -->
+  <main class="flex-1 flex flex-col lg:flex-row overflow-hidden">
+    <!-- CENTER MAP AREA -->
+    <section class="flex-1 flex flex-col p-2 sm:p-3 min-h-[420px] relative">
+      <div id="toast-container" class="pointer-events-none fixed top-20 left-1/2 z-40 w-[92%] max-w-lg"></div>
+
+      <div id="canvas-wrapper" class="flex-1 rounded-xl overflow-hidden flex items-center justify-center relative">
+        <canvas id="game-canvas"></canvas>
+
+        <div id="map-mode-banner" class="hidden absolute top-3 left-1/2 -translate-x-1/2 px-3.5 py-1.5 rounded-full bg-slate-950/90 border border-amber-400/70 text-amber-300 text-xs font-bold tracking-wide shadow-xl flex items-center gap-2 z-20">
+          <span id="map-mode-text">PLOT MOVE PATH</span>
+          <button id="btn-cancel-mode" class="ml-1 px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-[10px] font-mono-tac">ESC / CANCEL</button>
+        </div>
+      </div>
+
+      <!-- Bottom Telemetry Bar -->
+      <div class="mt-2 bg-slate-900/90 border border-slate-800 rounded-lg px-3 py-1.5 flex flex-wrap items-center justify-between gap-2 text-[11px] font-mono-tac text-slate-400">
+        <div class="flex items-center gap-4">
+          <span>CURSOR: <strong id="tel-coords" class="text-slate-200">--.--", --.--"</strong></span>
+          <span>TERRAIN: <strong id="tel-terrain" class="text-emerald-400">LAND</strong></span>
+          <span>RULER: <strong id="tel-dist" class="text-amber-300">—</strong></span>
+        </div>
+        <div class="flex items-center gap-3 text-[10px]">
+          <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-sm bg-sky-400 inline-block"></span> P1 Main: <strong id="tel-p1-bases" class="text-sky-300">0/2</strong></span>
+          <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-sm bg-rose-400 inline-block"></span> P2 Main: <strong id="tel-p2-bases" class="text-rose-300">0/2</strong></span>
+        </div>
+      </div>
+    </section>
+
+    <!-- RIGHT SIDEBAR -->
+    <aside class="w-full lg:w-[385px] xl:w-[410px] bg-[#0f172a] border-t lg:border-t-0 lg:border-l border-slate-700/80 flex flex-col max-h-[65vh] lg:max-h-none lg:h-[calc(100vh-58px)]">
+      <!-- Selected Entity Inspector -->
+      <div class="p-3 border-b border-slate-800 overflow-y-auto flex-shrink-0 max-h-[42%]">
+        <div class="flex items-center justify-between mb-1.5">
+          <h2 class="text-[11px] font-mono-tac font-bold uppercase tracking-wider text-slate-400">Tactical Inspector</h2>
+          <span id="inspector-owner-badge" class="text-[10px] font-mono-tac px-2 py-0.5 rounded bg-slate-800 text-slate-400">NO SELECTION</span>
+        </div>
+        <div id="inspector-content" class="bg-[#162033] border border-slate-700/70 rounded-xl p-2.5 text-xs text-slate-300"></div>
+      </div>
+
+      <!-- Secret Order Queue Panel -->
+      <div class="p-3 border-b border-slate-800 flex-shrink-0 max-h-[27%] flex flex-col">
+        <div class="flex items-center justify-between mb-1.5">
+          <h2 class="text-[11px] font-mono-tac font-bold uppercase tracking-wider text-amber-400">
+            Secret Orders (<span id="queue-count">0</span>)
+          </h2>
+          <div class="flex items-center gap-1.5">
+            <button id="btn-undo-order" class="tac-btn px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-[10px] font-mono-tac font-bold">↩ Undo</button>
+            <button id="btn-clear-orders" class="tac-btn px-2 py-0.5 rounded bg-slate-800 hover:bg-rose-900/70 text-rose-300 text-[10px] font-mono-tac font-bold">✕ Clear</button>
+          </div>
+        </div>
+        <div id="order-queue-list" class="overflow-y-auto space-y-1 text-[11px] font-mono-tac pr-1"></div>
+      </div>
+
+      <!-- Resolution & Dice Log -->
+      <div class="flex-1 flex flex-col min-h-0 p-3">
+        <div class="flex items-center justify-between mb-1.5">
+          <h2 class="text-[11px] font-mono-tac font-bold uppercase tracking-wider text-slate-400">Resolution & Dice Log</h2>
+          <button id="btn-clear-log" class="text-[10px] font-mono-tac text-slate-500 hover:text-slate-300">CLEAR</button>
+        </div>
+        <div id="combat-log" class="flex-1 overflow-y-auto space-y-1.5 pr-1 text-[11px] font-mono-tac"></div>
+      </div>
+    </aside>
+  </main>
+
+  <!-- HOTSEAT PRIVACY HANDOFF MODAL -->
+  <div id="handoff-modal" class="hidden fixed inset-0 z-50 bg-[#050914]/95 backdrop-blur-md flex items-center justify-center p-4">
+    <div class="bg-[#111827] border-2 border-slate-600 rounded-2xl max-w-md w-full p-6 text-center shadow-2xl">
+      <div class="w-14 h-14 mx-auto mb-3 rounded-2xl bg-slate-800 border border-slate-600 flex items-center justify-center text-3xl">🔒</div>
+      <h2 id="handoff-title" class="text-xl font-extrabold uppercase tracking-wider text-slate-100 mb-1.5">Orders Locked</h2>
+      <p id="handoff-subtitle" class="text-sm text-slate-300 mb-5">Pass the device to Player 2 (Red). Secret orders are hidden.</p>
+      <button id="btn-handoff-ready" class="tac-btn w-full py-3 rounded-xl bg-gradient-to-b from-rose-500 to-rose-700 hover:from-rose-400 hover:to-rose-600 text-white font-extrabold uppercase tracking-wider text-sm">
+        Player 2 Ready — Begin Planning
+      </button>
+    </div>
+  </div>
+
+  <!-- RULES REFERENCE MODAL (v2.1 MANUAL) -->
+  <div id="rules-modal" class="hidden fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6">
+    <div class="bg-[#111827] border border-slate-600 rounded-2xl max-w-3xl w-full max-h-[88vh] flex flex-col shadow-2xl overflow-hidden">
+      <div class="px-5 py-3.5 bg-slate-900 border-b border-slate-700 flex items-center justify-between">
+        <div>
+          <h3 class="text-base font-extrabold text-slate-100 tracking-wide uppercase">Production & Logistics Manual (v2.1)</h3>
+          <p class="text-xs font-mono-tac text-sky-400">WEGO Simultaneous Turns, Auto-Engagement & Multi-Action Movement</p>
+        </div>
+        <button id="btn-close-rules" class="tac-btn px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold">✕ CLOSE</button>
+      </div>
+      <div class="p-5 overflow-y-auto space-y-4 text-xs sm:text-sm text-slate-300 leading-relaxed">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div class="bg-slate-900/70 border border-slate-700/70 rounded-xl p-3">
+            <h4 class="font-bold text-amber-400 uppercase text-xs mb-1.5">WEGO Turn Structure (4 AP / Player)</h4>
+            <ul class="space-y-1 text-xs">
+              <li>• <strong>Planning Phase:</strong> P1 queues secret orders (4 AP), passes device via privacy screen, then P2 queues secret orders (4 AP).</li>
+              <li>• <strong>Multi-Action Chained Movement:</strong> Any unit may chain multiple <strong>1 AP</strong> move legs in a single turn (up to 4 AP). Road bonus (+1" Land) applies per leg.</li>
+              <li>• <strong>Step 1 — Movement & Resupply:</strong> All units animate leg-by-leg simultaneously. Spent units touching or passing a friendly Base/Resupply Hub (0.62") along any leg reload immediately!</li>
+              <li>• <strong>Step 2 — Automatic Engagement (0 AP):</strong> All Loaded units automatically fire at the closest valid enemy in range. Mutual kills possible. Firing makes a unit <strong>SPENT</strong>.</li>
+              <li>• <strong>Step 3 — Missiles:</strong> Missiles (Atk 8) strike; Air Defense within 3" intercepts with D4.</li>
+              <li>• <strong>Step 4 — Logistics:</strong> Idle Resupply ticks (2 turns), production spawns, 4 AP construction/repairs complete, and +1 Missile restocks every 5 turns.</li>
+            </ul>
+          </div>
+          <div class="bg-slate-900/70 border border-slate-700/70 rounded-xl p-3">
+            <h4 class="font-bold text-emerald-400 uppercase text-xs mb-1.5">Action Point Costs & Field Hubs</h4>
+            <ul class="space-y-1 text-xs">
+              <li>• <strong>Automatic Engagement:</strong> <strong>0 AP</strong> (Automatic, no manual attack button).</li>
+              <li>• <strong>Move Unit / Queue Missile:</strong> <strong>1 AP</strong> each.</li>
+              <li>• <strong>Produce Unit:</strong> <strong>2 AP</strong> (facility enters 2/3/4-turn cooldown).</li>
+              <li>• <strong>Construct / Convert / Repair:</strong> <strong>4 AP</strong> (entire turn).</li>
+              <li>• <strong>Infantry → Resupply Hub:</strong> A Secured Infantry (held position 1 turn) can spend 4 AP to convert into a permanent <strong>Resupply Hub</strong> (Pot, HP 3). Canceled if destroyed in Steps 2–3!</li>
+              <li>• <strong>Victory:</strong> Destroy both enemy Original Main Bases simultaneously.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="bg-slate-900/70 border border-slate-700/70 rounded-xl p-3 overflow-x-auto">
+          <h4 class="font-bold text-sky-400 uppercase text-xs mb-2">Units & Automatic Engagement Reference</h4>
+          <table class="w-full text-left text-xs font-mono-tac border-collapse">
+            <thead>
+              <tr class="border-b border-slate-700 text-slate-400">
+                <th class="py-1 pr-2">Unit</th>
+                <th class="py-1 px-2">Shape</th>
+                <th class="py-1 px-2">Spd</th>
+                <th class="py-1 px-2">HP</th>
+                <th class="py-1 px-2">Atk</th>
+                <th class="py-1 px-2">Auto-Rng</th>
+                <th class="py-1 px-2">CD</th>
+                <th class="py-1 pl-2">Rules</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-800">
+              <tr><td class="py-1 pr-2 text-slate-100">Infantry</td><td class="px-2">Square</td><td class="px-2">1"</td><td class="px-2">2</td><td class="px-2">2</td><td class="px-2">1"</td><td class="px-2">2t</td><td class="pl-2 text-slate-400">Cannot hit Heavy Veh/Air/Ship; converts to Resupply Hub</td></tr>
+              <tr><td class="py-1 pr-2 text-slate-100">SpecOps</td><td class="px-2">Egg</td><td class="px-2">2"</td><td class="px-2">4</td><td class="px-2">3</td><td class="px-2">1"</td><td class="px-2">3t</td><td class="pl-2 text-slate-400">Hits all land & bases; repairs general ruins</td></tr>
+              <tr><td class="py-1 pr-2 text-slate-100">Light Veh</td><td class="px-2">Small Bead</td><td class="px-2">3"</td><td class="px-2">6</td><td class="px-2">4</td><td class="px-2">1"</td><td class="px-2">2t</td><td class="pl-2 text-slate-400">Fast all-purpose land unit</td></tr>
+              <tr><td class="py-1 pr-2 text-slate-100">Heavy Veh</td><td class="px-2">Big Bead</td><td class="px-2">2"</td><td class="px-2">8</td><td class="px-2">5</td><td class="px-2">1"</td><td class="px-2">3t</td><td class="pl-2 text-slate-400">Heavy armor; immune to standard Infantry</td></tr>
+              <tr><td class="py-1 pr-2 text-slate-100">Air Defense</td><td class="px-2">Beehive</td><td class="px-2">2"</td><td class="px-2">4</td><td class="px-2">4</td><td class="px-2">3"</td><td class="px-2">2t</td><td class="pl-2 text-slate-400">Auto-engages Planes & intercepts Missiles (D4)</td></tr>
+              <tr><td class="py-1 pr-2 text-slate-100">Plane</td><td class="px-2">Small Heart</td><td class="px-2">4"</td><td class="px-2">6</td><td class="px-2">5</td><td class="px-2">3"</td><td class="px-2">4t</td><td class="pl-2 text-slate-400">Immune to land except Air Defense</td></tr>
+              <tr><td class="py-1 pr-2 text-slate-100">Ship</td><td class="px-2">Small Star</td><td class="px-2">3"</td><td class="px-2">6</td><td class="px-2">4</td><td class="px-2">3"</td><td class="px-2">4t</td><td class="pl-2 text-slate-400">Water only; auto-engages land & water in 3"</td></tr>
+            </tbody>
+          </table>
+          <p class="text-[11px] text-amber-300 mt-2">Road Bonus: Land units starting on or moving along a marked highway receive +1" speed per leg.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- VICTORY MODAL -->
+  <div id="victory-modal" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+    <div class="bg-[#111827] border-2 border-amber-400/70 rounded-2xl max-w-md w-full p-6 text-center shadow-2xl">
+      <div class="text-5xl mb-3">🏆</div>
+      <h2 id="victory-title" class="text-2xl font-extrabold uppercase tracking-wider text-amber-300 mb-2">VICTORY!</h2>
+      <p id="victory-subtitle" class="text-sm text-slate-300 mb-5">Both enemy Original Main Bases have been neutralized.</p>
+      <div id="victory-stats" class="bg-slate-900/90 border border-slate-700 rounded-xl p-3 mb-5 text-xs font-mono-tac text-slate-300 space-y-1"></div>
+      <button id="btn-play-again" class="tac-btn w-full py-2.5 rounded-xl bg-gradient-to-b from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-extrabold uppercase tracking-wider">
+        Start New Campaign
+      </button>
+    </div>
+  </div>
+
+  <script src="tactical-war-game.js"></script>
+</body>
+</html>
