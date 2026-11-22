@@ -1,0 +1,690 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Planning regression tests</title></head>
+<body>
+  <h1>Planning regression tests</h1>
+  <pre id="result">Running...</pre>
+  <iframe id="game" src="../tactical_map_war_game_v2_1_custom_map_edition.html" hidden></iframe>
+  <script>
+    document.getElementById('game').addEventListener('load', async function () {
+      const result = document.getElementById('result');
+      try {
+        const messages = await this.contentWindow.eval(`(async () => {
+          const messages = [];
+          function check(condition, message) {
+            if (!condition) throw new Error(message);
+            messages.push('PASS: ' + message);
+          }
+          function fixture() {
+            resetCampaign(false);
+            const n = 80, types = Array(n * n).fill('G'), zero = Array(n * n).fill(0);
+            state.customMap = finalizeCustomMap('test', n, n, types, zero.slice(), zero.slice(), zero.slice(), []);
+            MAP_W = 68; MAP_H = 44;
+            state.phase = 'PLANNING'; state.activePlayer = 1;
+            spawnStructure(1, 'main_base', 3, 3, true);
+            spawnStructure(2, 'main_base', 65, 40, true);
+            return types;
+          }
+          sleep = async () => {};
+          fixture();
+          check(getMaxAP(1) === 4 && getMaxAP(4) === 5 && getMaxAP(16) === 9, 'AP increases without a cap');
+          const unit = spawnUnit(1, 'infantry', 10, 10);
+          check(queueRoute(unit, 12.5, 10), 'route spans current and future turns');
+          check(state.orders[1].length === 1 && state.orders[1][0].cost === 0 &&
+            state.futurePlans[1].length === 2 && state.futurePlans[1].some(o => o.targetTurn === 3) &&
+            getRemainingAP(1, 1) === 4,
+            'route schedules one free move per unit per turn');
+          check(!queueFutureOrder(1, 2, { type: 'MOVE', unitId: unit.id, cost: 0 }),
+            'duplicate future moves for a unit are rejected');
+          const dueNext = state.futurePlans[1].filter(o => o.targetTurn === 2).length;
+          const later = state.futurePlans[1].filter(o => o.targetTurn > 2).length;
+          check(!queueFutureOrder(1, 2, { type: 'PRODUCE', cost: 5 }),
+            'future orders cannot exceed their turn AP budget');
+          await runSimultaneousResolution();
+          beginNextTurn();
+          document.getElementById('btn-handoff-ready').click();
+          check(state.turn === 2 && state.orders[1].length === dueNext && state.futurePlans[1].length === later,
+            'due route legs promote on the next turn');
+          await runSimultaneousResolution();
+          beginNextTurn();
+          document.getElementById('btn-handoff-ready').click();
+          await runSimultaneousResolution();
+          check(unit.x === 12.5 && unit.y === 10 && state.futurePlans[1].length === 0,
+            'promoted route reaches its target');
+
+          fixture();
+          const shortEnd = spawnUnit(1, 'infantry', 10, 10);
+          check(queueRoute(shortEnd, 11.644, 10.228), 'a route with a short final segment can be scheduled');
+          const lastLeg = [...state.orders[1], ...state.futurePlans[1]].pop();
+          check(lastLeg.toX === 11.644 && lastLeg.toY === 10.228, 'the route reaches the exact requested target');
+
+          fixture();
+          const base = state.entities[0];
+          base.cooldown = 3;
+          queueProduceOrder(base, 'infantry');
+          queueProduceOrder(base, 'infantry');
+          check(state.futurePlans[1][0].targetTurn === 4 && state.futurePlans[1][1].targetTurn === 7,
+            'production is scheduled around existing and planned cooldowns');
+
+          fixture();
+          const queuedBase = state.entities[0];
+          fillProductionQueue(queuedBase, 'infantry');
+          const production = allQueuedOrders(1).filter(e => e.order.baseId === queuedBase.id);
+          check(production.length === 5 && production.every(e => e.order.unitType === 'infantry') &&
+            production.every((e, i) => i === 0 || e.turn > production[i - 1].turn),
+            'base fill schedules five production orders around cooldowns');
+          check(!queueProduceOrder(queuedBase, 'infantry') && facilityQueueCount(queuedBase.id, 1) === 5,
+            'base production queue cannot exceed five');
+          removeQueuedOrder(1, production[2].order.id);
+          fillProductionQueue(queuedBase, 'light_veh');
+          check(facilityQueueCount(queuedBase.id, 1) === 5 &&
+            allQueuedOrders(1).some(e => e.order.baseId === queuedBase.id && e.order.unitType === 'light_veh'),
+            'removing a production order frees a slot for another unit type');
+          const carrier = spawnUnit(1, 'aircraft_carrier', 20, 20);
+          fillProductionQueue(carrier, 'plane');
+          check(facilityQueueCount(carrier.id, 1) === 5 && !queueProduceOrder(carrier, 'strategic_bomber'),
+            'carrier production has the same five-order limit');
+
+          fixture();
+          const tooClose = spawnUnit(1, 'infantry', 5.99, 3);
+          const atBoundary = spawnUnit(1, 'infantry', 6, 3);
+          tooClose.secured = true; atBoundary.secured = true;
+          queueConstructOrder(tooClose, 'major_base');
+          check(!allQueuedOrders(1).some(e => e.order.unitId === tooClose.id),
+            'secondary bases cannot be built less than three inches from a main base');
+          queueConstructOrder(atBoundary, 'major_base');
+          check(allQueuedOrders(1).some(e => e.order.unitId === atBoundary.id),
+            'secondary bases are allowed exactly three inches from a main base');
+          const nearEnemy = spawnUnit(1, 'infantry', 64, 40);
+          nearEnemy.secured = true;
+          queueConstructOrder(nearEnemy, 'minor_base');
+          check(!allQueuedOrders(1).some(e => e.order.unitId === nearEnemy.id),
+            'the exclusion distance also applies to an opposing main base');
+
+          fixture();
+          spawnStructure(1, 'major_base', 12, 12);
+          spawnStructure(1, 'minor_base', 18, 12);
+          spawnStructure(1, 'air_base', 24, 12);
+          const builderFour = spawnUnit(1, 'infantry', 30, 12);
+          const builderFive = spawnUnit(1, 'infantry', 36, 12);
+          builderFour.secured = true; builderFive.secured = true;
+          queueConstructOrder(builderFour, 'minor_base');
+          queueConstructOrder(builderFive, 'major_base');
+          check(allQueuedOrders(1).filter(e => e.order.type === 'CONSTRUCT').length === 1,
+            'the fourth secondary base can be queued but a fifth is rejected');
+          const ruinBase = spawnStructure(1, 'minor_base', 42, 12);
+          convertStructureToRuin(ruinBase);
+          state.entities = state.entities.filter(e => e.id !== ruinBase.id);
+          const ruin = state.ruins[state.ruins.length - 1];
+          ruin.cooldown = 0;
+          queueRepairRuin(ruin, builderFive);
+          check(!allQueuedOrders(1).some(e => e.order.type === 'REPAIR_UNIT'),
+            'secondary base repairs respect reserved construction slots');
+
+          fixture();
+          spawnStructure(1, 'major_base', 12, 12);
+          spawnStructure(1, 'minor_base', 18, 12);
+          spawnStructure(1, 'air_base', 24, 12);
+          const firstBuild = spawnUnit(1, 'infantry', 30, 12);
+          const secondBuild = spawnUnit(1, 'infantry', 36, 12);
+          state.orders[1].push(
+            { id: nextOrderId++, type: 'CONSTRUCT', cost: 4, unitId: firstBuild.id, structType: 'minor_base' },
+            { id: nextOrderId++, type: 'CONSTRUCT', cost: 4, unitId: secondBuild.id, structType: 'major_base' });
+          await runSimultaneousResolution();
+          check(secondaryBaseCount(1) === 4 && !!getEntityById(secondBuild.id),
+            'resolution prevents simultaneous construction from exceeding the limit');
+
+          fixture();
+          const rallyBase = state.entities[0];
+          state.rallyPoints[1][rallyBase.id] = { x: 8, y: 3 };
+          queueProduceOrder(rallyBase, 'infantry');
+          await runSimultaneousResolution();
+          const rallyUnit = state.entities.find(e => e.kind === 'unit' && e.owner === 1);
+          check(rallyUnit && rallyUnit.x !== 8 && state.pendingRallies[1].length === 1,
+            'production spawns normally and records its rally destination');
+          beginNextTurn();
+          document.getElementById('btn-handoff-ready').click();
+          check(state.orders[1].some(o => o.type === 'MOVE' && o.unitId === rallyUnit.id) &&
+            allQueuedOrders(1).some(e => e.order.unitId === rallyUnit.id && e.order.toX === 8 && e.order.toY === 3),
+            'newly produced units automatically receive a multi-turn rally route');
+          const beforeRallyMove = rallyUnit.x;
+          await runSimultaneousResolution();
+          check(rallyUnit.x > beforeRallyMove && rallyUnit.x < 8,
+            'rally movement obeys normal per-turn movement rather than teleporting');
+
+          fixture();
+          const blockedRallyBase = state.entities[0];
+          state.customMap.types[5 * 80 + 20] = 'W';
+          const waterTarget = { x: 20.5 * MAP_W / 80, y: 5.5 * MAP_H / 80 };
+          state.rallyPoints[1][blockedRallyBase.id] = waterTarget;
+          queueProduceOrder(blockedRallyBase, 'infantry');
+          await runSimultaneousResolution();
+          const strandedUnit = state.entities.find(e => e.kind === 'unit' && e.owner === 1);
+          beginNextTurn();
+          document.getElementById('btn-handoff-ready').click();
+          check(!allQueuedOrders(1).some(e => e.order.unitId === strandedUnit.id) &&
+            document.getElementById('combat-log').textContent.includes('Could not route Infantry to its rally point'),
+            'unreachable rally points leave no partial route and report the failure');
+
+          fixture();
+          const artillery = spawnUnit(1, 'artillery', 20, 20);
+          queueMoveLeg(artillery, 21, 20); queueBarrage(artillery, 22, 20);
+          check(!state.orders[1].some(o => o.type === 'BARRAGE'), 'artillery cannot move and barrage in one turn');
+          clearAllOrders();
+          queueBarrage(artillery, 22, 20);
+          check(queueMoveLeg(artillery, 21, 20) && state.futurePlans[1][0].targetTurn === 2,
+            'artillery movement after a barrage is scheduled for a later turn');
+
+          fixture();
+          for (let row = 0; row < 80; row++) state.customMap.types[row * 80 + 40] = 'W';
+          check(findPathAStar(10, 10, 50, 10, 'infantry') === null, 'land routes cannot cross an unbridged water wall');
+          check(!!findPathAStar(10, 10, 50, 10, 'plane'), 'air routes can cross the same wall');
+          check(!!findPathAStar(10, 10, 50, 10, 'infantry', { allowWater: true }),
+            'pathfinding honors allowWater');
+          fixture();
+          for (let row = 0; row < 80; row++) state.customMap.types[row * 80 + 40] = 'W';
+          const bridge = spawnStructure(1, 'pontoon_bridge', 34.425, 11);
+          Object.assign(bridge, { x1: 33.95, y1: 11, x2: 34.9, y2: 11 });
+          check(!!findPathAStar(33, 11, 36, 11, 'infantry'), 'land routes can use pontoon bridges');
+          const cornerTypes = Array(64).fill('B'), cornerZero = Array(64).fill(0);
+          cornerTypes[0] = 'G'; cornerTypes[9] = 'G';
+          state.customMap = finalizeCustomMap('corner', 8, 8, cornerTypes, cornerZero.slice(), cornerZero.slice(), cornerZero.slice(), []);
+          check(findPathAStar(4.25, 2.75, 12.75, 8.25, 'infantry') === null,
+            'diagonal routes cannot squeeze between impassable corners');
+
+          fixture();
+          for (let i = 0; i < 8; i++) spawnUnit(1, 'infantry', 10 + i, 10);
+          const scaling = getLinearScaling(1, 15);
+          check(scaling.unitCountAtkBonus === 1 && scaling.progressAtkBonus === 2 &&
+            scaling.cooldownReduction === 1 && scaling.moveSpeedScale === 1.2,
+            'turn and unit-count scaling reaches the agreed values');
+          state.turn = 15;
+          const attacker = state.entities.find(e => e.kind === 'unit' && e.owner === 1);
+          spawnUnit(2, 'infantry', 10.8, 10);
+          toggleEngageOrder(attacker);
+          queueProduceOrder(state.entities[0], 'heavy_veh');
+          const rolls = [], oldRoll = rollDie;
+          rollDie = sides => { rolls.push(sides); return 1; };
+          await runSimultaneousResolution();
+          rollDie = oldRoll;
+          check(rolls[0] === 5 && state.entities[0].cooldown === 2,
+            'attack and production actually use the scaling');
+
+          fixture();
+          const builder = spawnUnit(1, 'infantry', 10, 10);
+          const barrier = spawnUnit(1, 'roadblock', 11, 10);
+          Object.assign(barrier, { x1: 11, y1: 9, x2: 11, y2: 11 });
+          check(traceLandPath(10, 10, 12, 10, false, builder, true).reason === 'ROADBLOCK',
+            'friendly roadblocks block land movement');
+
+          fixture();
+          const units = Array.from({ length: 5 }, (_, i) => spawnUnit(1, 'infantry', 10 + i * 3, 10));
+          for (const u of units) queueMoveLeg(u, u.x + 0.8, u.y);
+          check(state.orders[1].length === 5 && state.futurePlans[1].length === 0 &&
+            getRemainingAP(1, 1) === 4, 'different units can each move for free in the same turn');
+          check(queueMoveLeg(units[0], units[0].x + 1, units[0].y) &&
+            state.futurePlans[1][0].targetTurn === 2 && state.futurePlans[1][0].cost === 0,
+            'a second move for the same unit is scheduled for a later turn');
+          removeQueuedOrder(1, state.orders[1][0].id);
+          check(state.futurePlans[1].length === 0 && state.orders[1].some(o => o.unitId === units[0].id),
+            'removing a move pulls a valid later move forward');
+
+          fixture();
+          const fullAP = spawnUnit(1, 'infantry', 10, 10);
+          queueProduceOrder(state.entities[0], 'infantry');
+          queueProduceOrder(spawnStructure(1, 'minor_base', 7, 7), 'infantry');
+          check(getRemainingAP(1, 1) === 0 && queueMoveLeg(fullAP, 10.8, 10) &&
+            state.orders[1].some(o => o.type === 'MOVE' && o.cost === 0),
+            'a free move remains available after all AP is spent');
+
+          fixture();
+          const routeA = spawnUnit(1, 'infantry', 10, 10);
+          const routeB = spawnUnit(1, 'infantry', 20, 10);
+          queueRoute(routeA, 12.5, 10);
+          check(queueMoveLeg(routeB, 20.8, 10) &&
+            state.orders[1].some(o => o.unitId === routeB.id),
+            'another unit moves this turn even when a long route is queued');
+          undoLastOrder();
+          check(!allQueuedOrders(1).some(e => e.order.unitId === routeB.id) &&
+            state.futurePlans[1].some(o => o.unitId === routeA.id),
+            'undo removes the most recently added order rather than the latest scheduled turn');
+          queueRoute(routeB, 22.5, 10);
+          check(state.orders[1].filter(o => o.type === 'MOVE').length === 2 &&
+            state.futurePlans[1].filter(o => o.targetTurn === 2).length === 2,
+            'different units can follow multi-turn routes simultaneously');
+          await runSimultaneousResolution();
+          beginNextTurn();
+          document.getElementById('btn-handoff-ready').click();
+          await runSimultaneousResolution();
+          check(routeA.x > 11.9 && routeB.x > 21.9,
+            'both units advance on each resolution turn');
+
+          fixture();
+          const groupInf = spawnUnit(1, 'infantry', 10, 10);
+          const groupVeh = spawnUnit(1, 'light_veh', 10, 12);
+          setSelectedUnits([groupInf.id, groupVeh.id]);
+          document.getElementById('group-name').value = '<Alpha>';
+          document.getElementById('group-save').click();
+          setSelectedUnits([]);
+          document.getElementById('group-load').click();
+          check(state.selectedUnitIds.length === 2 && state.unitGroups[1][0].name === '<Alpha>' &&
+            !document.querySelector('#group-list alpha'), 'named groups can be saved and selected safely');
+          check(queueGroupRoute([groupInf, groupVeh], 14, 11), 'group route schedules a formation move');
+          const groupMoves = allQueuedOrders(1).filter(e => e.order.type === 'MOVE');
+          const turns = [...new Set(groupMoves.map(e => e.turn))];
+          check(turns.length > 1 && turns.every(turn => {
+            const moves = groupMoves.filter(e => e.turn === turn).map(e => e.order);
+            return moves.length === 2 && Math.abs(moves[0].toX - moves[1].toX) < 1e-8 &&
+              Math.abs(moves[1].toY - moves[0].toY - 2) < 1e-8 &&
+              distIn(moves[0].fromX, moves[0].fromY, moves[0].toX, moves[0].toY) <=
+                getLegSpeed(groupInf, moves[0].fromX, moves[0].fromY, moves[0].toX, moves[0].toY) + 0.1;
+          }), 'group moves preserve offsets and are scheduled together at the slowest speed');
+          const beforeInvalid = allQueuedOrders(1).length;
+          check(!queueGroupRoute([groupInf, groupVeh], 14, 44) && allQueuedOrders(1).length === beforeInvalid,
+            'invalid group destinations leave existing orders unchanged');
+          removeQueuedOrder(1, groupMoves[0].order.id);
+          check(!allQueuedOrders(1).some(e => e.order.groupRouteId != null),
+            'removing one group move removes the complete route');
+
+          fixture();
+          const ga = spawnUnit(1, 'infantry', 10, 10);
+          const gb = spawnUnit(1, 'infantry', 10, 12);
+          queueMoveLeg(ga, 10.5, 10);
+          queueMoveLeg(ga, 11, 10);
+          const earlierMove = state.orders[1][0].id;
+          check(queueGroupRoute([ga, gb], 14, 11), 'a group can route after one member has prior orders');
+          removeQueuedOrder(1, earlierMove);
+          const syncedMoves = allQueuedOrders(1).filter(e => e.order.groupRouteId != null);
+          check(syncedMoves.length > 2 && [...new Set(syncedMoves.map(e => e.turn))].every(turn => {
+            const moves = syncedMoves.filter(e => e.turn === turn).map(e => e.order);
+            return moves.length === 2 &&
+              Math.abs((moves[0].toX - moves[0].fromX) - (moves[1].toX - moves[1].fromX)) < 1e-8 &&
+              Math.abs((moves[0].toY - moves[0].fromY) - (moves[1].toY - moves[1].fromY)) < 1e-8;
+          }), 'rescheduling keeps group members together after removing a prior order');
+          await runSimultaneousResolution();
+          beginNextTurn();
+          document.getElementById('btn-handoff-ready').click();
+          check(state.orders[1].filter(o => o.groupRouteId != null).length === 2,
+            'group moves promote together after earlier orders resolve');
+          await runSimultaneousResolution();
+          check(Math.abs(gb.x - ga.x + 1) < 1e-8 && Math.abs(gb.y - ga.y - 2) < 1e-8,
+            'group members retain their projected formation during resolution');
+          while (state.futurePlans[1].some(o => o.groupRouteId != null)) {
+            beginNextTurn();
+            document.getElementById('btn-handoff-ready').click();
+            await runSimultaneousResolution();
+          }
+          check(Math.abs((ga.x + gb.x) / 2 - 14) < 1e-8 && Math.abs((ga.y + gb.y) / 2 - 11) < 1e-8,
+            'a group reaches its destination together across multiple turns');
+
+          fixture();
+          const survivor = spawnUnit(1, 'infantry', 10, 10);
+          const casualty = spawnUnit(1, 'infantry', 10, 12);
+          queueGroupRoute([survivor, casualty], 13, 11);
+          await runSimultaneousResolution();
+          state.entities = state.entities.filter(e => e.id !== casualty.id);
+          beginNextTurn();
+          document.getElementById('btn-handoff-ready').click();
+          check(state.orders[1].some(o => o.unitId === survivor.id && o.groupRouteId != null) &&
+            !allQueuedOrders(1).some(e => e.order.unitId === casualty.id),
+            'losing a group member preserves the surviving unit route');
+
+          fixture();
+          const interruptedA = spawnUnit(1, 'infantry', 10, 10);
+          const interruptedB = spawnUnit(1, 'infantry', 10, 12);
+          queueGroupRoute([interruptedA, interruptedB], 14, 11);
+          await runSimultaneousResolution();
+          interruptedB.x -= 2;
+          const oldConfirmGroup = window.confirm;
+          window.confirm = () => false;
+          beginNextTurn();
+          document.getElementById('btn-handoff-ready').click();
+          window.confirm = oldConfirmGroup;
+          check(!state.orders[1].some(o => o.groupRouteId != null) &&
+            state.futurePlans[1].filter(o => o.groupRouteId != null).every(o => o.invalid),
+            'an invalid group step is deferred together instead of splitting the formation');
+
+          fixture();
+          const blockedA = spawnUnit(1, 'infantry', 10, 10);
+          const blockedB = spawnUnit(1, 'infantry', 10, 12);
+          queueGroupRoute([blockedA, blockedB], 12, 11);
+          const hiddenBarrier = spawnUnit(2, 'roadblock', 10.5, 10);
+          Object.assign(hiddenBarrier, { x1: 10.5, y1: 9.5, x2: 10.5, y2: 10.5 });
+          await runSimultaneousResolution();
+          check(blockedA.x === 10 && blockedB.x === 10 && blockedA.y === 10 && blockedB.y === 12,
+            'a newly encountered roadblock stops the entire group');
+
+          fixture();
+          const gun = spawnUnit(1, 'artillery', 20, 20);
+          const soldier = spawnUnit(1, 'infantry', 25, 20);
+          const enemy = spawnUnit(2, 'infantry', 30, 20);
+          queueProduceOrder(state.entities[0], 'infantry');
+          queueBarrage(gun, 22, 20);
+          toggleEngageOrder(soldier);
+          queueMissileOrder(enemy.x, enemy.y);
+          check(state.orders[1].some(o => o.type === 'BARRAGE' && o.cost === 1) &&
+            state.orders[1].some(o => o.type === 'MISSILE' && o.cost === 1) &&
+            hasEngageOrder(soldier.id, 1) &&
+            getRemainingAP(1, 1) === 0,
+            'barrage and missile cost 1 AP each while engagement remains free');
+          for (let i = 0; i < 6; i++) queueMissileOrder(enemy.x, enemy.y);
+          check(allQueuedOrders(1).filter(e => e.order.type === 'MISSILE').length === state.missiles[1] &&
+            state.futurePlans[1].some(o => o.type === 'MISSILE' && o.cost === 1),
+            'missiles respect the stockpile and schedule around AP limits');
+
+          fixture();
+          const blastAlly = spawnUnit(1, 'infantry', 30.5, 20);
+          const blastEnemy = spawnUnit(2, 'infantry', 31.4, 20);
+          const safeEnemy = spawnUnit(2, 'infantry', 31.6, 20);
+          const immuneBase = spawnStructure(2, 'main_base', 30, 20);
+          const sniper = spawnUnit(2, 'sniper_team', 30, 20);
+          sniper.hp = 99;
+          const blastCell = getCustomCellAt(30, 20).idx;
+          state.customMap.types[blastCell] = 'B';
+          const blastRolls = [], savedRoll = rollDie;
+          rollDie = sides => { blastRolls.push(sides); return sides === 8 ? 8 : sides === 99 ? 99 : 1; };
+          queueMissileOrder(30, 20);
+          await runSimultaneousResolution();
+          rollDie = savedRoll;
+          check(!getEntityById(blastAlly.id) && !getEntityById(blastEnemy.id) &&
+            getEntityById(safeEnemy.id) && getEntityById(immuneBase.id) &&
+            !getEntityById(sniper.id) && state.destroyedBuildings.includes(blastCell) &&
+            blastRolls.filter(s => s === 8).length === 1,
+            'global missile blast hits both sides within 1.5 inches, collapses buildings, and spares Main Bases');
+
+          fixture();
+          const defended = spawnUnit(2, 'infantry', 30, 20);
+          spawnUnit(2, 'air_def', 32, 20);
+          const protectedCell = getCustomCellAt(30, 20).idx;
+          state.customMap.types[protectedCell] = 'B';
+          rollDie = sides => sides === 8 ? 1 : sides;
+          queueMissileOrder(30, 20);
+          await runSimultaneousResolution();
+          rollDie = savedRoll;
+          check(getEntityById(defended.id) && !state.destroyedBuildings.includes(protectedCell),
+            'missile interception prevents the entire blast and building destruction');
+
+          fixture();
+          const defendedShip = spawnUnit(2, 'ship', 30, 20);
+          spawnUnit(2, 'asw_corvette', 32, 20);
+          const corvetteRolls = [];
+          rollDie = sides => { corvetteRolls.push(sides); return sides === 8 ? 3 : sides === 4 ? 4 : 1; };
+          queueMissileOrder(30, 20);
+          await runSimultaneousResolution();
+          rollDie = savedRoll;
+          check(getEntityById(defendedShip.id) && corvetteRolls.includes(4),
+            'corvettes can intercept missiles threatening nearby ships');
+
+          fixture();
+          const movingTarget = spawnUnit(2, 'infantry', 31.4, 20);
+          queueMissileOrder(30, 20);
+          state.activePlayer = 2;
+          queueMoveLeg(movingTarget, 32.4, 20);
+          state.activePlayer = 1;
+          rollDie = sides => sides === 8 ? 8 : 1;
+          await runSimultaneousResolution();
+          rollDie = savedRoll;
+          check(getEntityById(movingTarget.id) && movingTarget.x === 32.4,
+            'missiles strike the selected area instead of tracking a moving target');
+
+          fixture();
+          const barrageGun = spawnUnit(1, 'artillery', 20, 20);
+          const barrageAlly = spawnUnit(1, 'infantry', 22.4, 20);
+          const barrageEnemy = spawnUnit(2, 'infantry', 22.7, 20);
+          const outsideBarrage = spawnUnit(2, 'infantry', 22.9, 20);
+          rollDie = sides => sides === 5 ? 5 : 1;
+          queueBarrage(barrageGun, 22, 20);
+          await runSimultaneousResolution();
+          rollDie = savedRoll;
+          check(!getEntityById(barrageAlly.id) && !getEntityById(barrageEnemy.id) &&
+            getEntityById(outsideBarrage.id),
+            'artillery retains its smaller blast and friendly fire');
+
+          fixture();
+          const duplicate = spawnUnit(1, 'infantry', 10, 10);
+          queueMoveLeg(duplicate, 10.8, 10);
+          state.orders[1].push({ id: nextOrderId++, type: 'MOVE', cost: 0, unitId: duplicate.id,
+            fromX: 10.8, fromY: 10, toX: 11.6, toY: 10, label: 'extra move' });
+          await runSimultaneousResolution();
+          check(duplicate.x === 10.8, 'resolution ignores extra moves for the same unit');
+
+          fixture();
+          const blocked = spawnUnit(1, 'infantry', 10, 10), other = spawnUnit(1, 'infantry', 20, 20);
+          queueFutureOrder(1, 2, { type: 'MOVE', cost: 0, unitId: blocked.id, fromX: 10, fromY: 10, toX: 11, toY: 10, label: 'blocked' });
+          queueFutureOrder(1, 2, { type: 'MOVE', cost: 0, unitId: other.id, fromX: 20, fromY: 20, toX: 21, toY: 20, label: 'valid' });
+          blocked.x = 5;
+          const oldConfirm = window.confirm;
+          let prompts = 0;
+          window.confirm = () => { prompts++; return false; };
+          state.phase = 'POST_RESOLUTION'; beginNextTurn();
+          document.getElementById('btn-handoff-ready').click();
+          window.confirm = oldConfirm;
+          check(prompts === 1 && state.futurePlans[1][0].invalid && state.orders[1][0].unitId === other.id,
+            'declining removal defers an invalid order while later valid orders proceed');
+
+          fixture();
+          const operator = spawnUnit(1, 'drone_operator', 10, 10);
+          queueMoveLeg(operator, 12, 10);
+          queueDrone(operator, 17, 10);
+          const moved = state.orders[1].find(o => o.type === 'MOVE');
+          let invalidPrompts = 0;
+          window.confirm = () => { invalidPrompts++; return false; };
+          removeQueuedOrder(1, moved.id);
+          window.confirm = oldConfirm;
+          check(invalidPrompts === 1 && state.futurePlans[1].some(o => o.type === 'DRONE' && o.invalid),
+            'removing a move asks before deferring an out-of-range drone order');
+
+          fixture();
+          const engager = spawnUnit(1, 'infantry', 10, 10);
+          const others = Array.from({ length: 4 }, (_, i) => spawnUnit(1, 'infantry', 20 + i * 3, 10));
+          toggleEngageOrder(engager);
+          for (const u of others) queueMoveLeg(u, u.x + 0.8, u.y);
+          toggleEngageOrder(engager);
+          check(state.futurePlans[1].length === 0 && state.orders[1].length === 4 &&
+            getRemainingAP(1, 1) === 4, 'canceling engagement preserves free moves');
+
+          fixture();
+          const standingUnit = spawnUnit(1, 'infantry', 10, 10);
+          const standingEnemy = spawnUnit(2, 'infantry', 10.5, 10);
+          toggleEngageOrder(standingUnit);
+          let attackRolls = 0;
+          rollDie = () => { attackRolls++; return 1; };
+          await runSimultaneousResolution();
+          check(attackRolls > 0 && standingUnit.ammoSpent && hasEngageOrder(standingUnit.id, 1),
+            'standing engagement attacks and remains active after resolution');
+          standingUnit.ammoSpent = false; standingEnemy.ammoSpent = false;
+          state.phase = 'POST_RESOLUTION'; beginNextTurn();
+          document.getElementById('btn-handoff-ready').click();
+          attackRolls = 0;
+          await runSimultaneousResolution();
+          check(attackRolls > 0 && standingUnit.ammoSpent && hasEngageOrder(standingUnit.id, 1),
+            'standing engagement attacks again on later turns after reloading');
+          standingUnit.ammoSpent = false; standingEnemy.ammoSpent = false;
+          state.phase = 'POST_RESOLUTION'; beginNextTurn();
+          document.getElementById('btn-handoff-ready').click();
+          toggleEngageOrder(standingUnit);
+          attackRolls = 0;
+          await runSimultaneousResolution();
+          rollDie = savedRoll;
+          check(attackRolls === 0 && !hasEngageOrder(standingUnit.id, 1),
+            'canceling standing engagement prevents future automatic attacks');
+
+          fixture();
+          const standingOperator = spawnUnit(1, 'drone_operator', 10, 10);
+          toggleEngageOrder(standingOperator);
+          queueDrone(standingOperator, 11, 10);
+          await runSimultaneousResolution();
+          check(state.drones.length === 1 && hasEngageOrder(standingOperator.id, 1),
+            'a drone launch takes priority without canceling standing engagement');
+
+          fixture();
+          const clearUnit = spawnUnit(1, 'infantry', 10, 10);
+          toggleEngageOrder(clearUnit);
+          clearAllOrders();
+          check(!hasEngageOrder(clearUnit.id, 1), 'clearing orders cancels standing engagement');
+
+          toggleEngageOrder(clearUnit);
+          updateUI();
+          document.querySelector('#order-queue-list [data-remove-order]').click();
+          check(!hasEngageOrder(clearUnit.id, 1), 'removing the standing queue entry cancels engagement');
+
+          toggleEngageOrder(clearUnit);
+          undoLastOrder();
+          check(!hasEngageOrder(clearUnit.id, 1), 'undo cancels a newly added standing engagement');
+
+          toggleEngageOrder(clearUnit);
+          state.entities = state.entities.filter(e => e.id !== clearUnit.id);
+          await runSimultaneousResolution();
+          check(state.standingEngage[1].length === 0, 'destroyed units lose their standing engagement');
+
+          fixture();
+          const orphan = spawnUnit(1, 'infantry', 10, 10);
+          queueFutureOrder(1, 2, { type: 'MOVE', cost: 0, unitId: orphan.id, toX: 10.8, toY: 10, label: 'orphan' });
+          state.entities = state.entities.filter(e => e.id !== orphan.id);
+          await runSimultaneousResolution();
+          check(state.futurePlans[1].length === 0, 'orders for destroyed units are removed');
+
+          fixture();
+          const realResolution = runSimultaneousResolution, realConfirm = window.confirm;
+          let resolutions = 0, promptsOnline = 0, sent = [];
+          runSimultaneousResolution = () => { resolutions++; state.phase = 'RESOLVING'; };
+          NET.role = 1;
+          NET.conn = { open: true, send: message => sent.push(message) };
+          NET.autoPass = false; NET.warnUnusedAP = true;
+          window.confirm = () => { promptsOnline++; return false; };
+          updateUI();
+          check(!document.getElementById('btn-auto-pass').classList.contains('hidden') &&
+            document.getElementById('btn-auto-pass').getAttribute('aria-pressed') === 'false',
+            'online auto-pass controls start off and are visible only online');
+          netHandle({ t: 'orders', orders: [] });
+          check(!NET.locked[1] && sent.length === 0 && promptsOnline === 0,
+            'opponent locking does not pass when auto-pass is off');
+          document.getElementById('btn-auto-pass').click();
+          check(NET.autoPass && !NET.locked[1] && promptsOnline === 1,
+            'enabling auto-pass with unused AP asks for confirmation');
+          netHandle({ t: 'orders', orders: [] });
+          check(promptsOnline === 1 && !sent.some(m => m.t === 'orders'),
+            'declining auto-pass keeps planning open without repeated prompts');
+          document.getElementById('btn-warn-unused-ap').click();
+          document.getElementById('btn-lock-orders').click();
+          check(!NET.warnUnusedAP && promptsOnline === 1 && sent.filter(m => m.t === 'orders').length === 1 &&
+            resolutions === 1, 'disabling the AP warning allows locking without confirmation');
+
+          NET.conn = null;
+          fixture();
+          NET.role = 1; NET.conn = { open: true, send: message => sent.push(message) };
+          NET.autoPass = true; NET.warnUnusedAP = true;
+          sent = []; promptsOnline = 0;
+          window.confirm = text => { promptsOnline++; return text.includes('4 unused AP'); };
+          netHandle({ t: 'orders', orders: [] });
+          check(promptsOnline === 1 && sent.filter(m => m.t === 'orders').length === 1,
+            'confirming unused AP permits the automatic lock');
+
+          NET.conn = null;
+          fixture();
+          NET.role = 1; NET.conn = { open: true, send: message => sent.push(message) };
+          NET.autoPass = true; NET.peerAutoPass = false; NET.warnUnusedAP = false;
+          sent = []; resolutions = 0;
+          netHandle({ t: 'auto-pass', enabled: false });
+          check(!sent.some(m => m.t === 'orders'), 'one player enabling auto-pass does not pass before the opponent');
+          netHandle({ t: 'auto-pass', enabled: true });
+          check(NET.locked[1] && sent.filter(m => m.t === 'orders').length === 1,
+            'both players enabling auto-pass initiates a lock without waiting for either player');
+          netHandle({ t: 'orders', orders: [] });
+          check(resolutions === 1, 'mutual auto-pass resolves after both order packets arrive');
+
+          NET.conn = null;
+          fixture();
+          NET.peerAutoPass = false;
+          NET.role = 1; NET.conn = { open: true, send: message => sent.push(message) };
+          NET.autoPass = true; NET.warnUnusedAP = true;
+          state.orders[1].push({ id: nextOrderId++, type: 'MISSILE', cost: 4, targetX: 20, targetY: 20 });
+          state.planCurrent = false; state.planTurnOffset = 1;
+          promptsOnline = 0; sent = []; resolutions = 0;
+          window.confirm = () => { promptsOnline++; return false; };
+          netHandle({ t: 'orders', orders: [] });
+          check(promptsOnline === 0 && sent.filter(m => m.t === 'orders').length === 1 && resolutions === 1,
+            'auto-pass uses current-turn AP and locks without warning when none remains');
+
+          NET.conn = null;
+          fixture();
+          NET.role = 1; NET.conn = { open: true, send: message => sent.push(message) };
+          NET.autoPass = true; NET.warnUnusedAP = true;
+          const firstFacility = state.entities[0];
+          const secondFacility = spawnStructure(1, 'minor_base', 7, 7);
+          queueFutureOrder(1, 2, { type: 'PRODUCE', cost: 2, baseId: firstFacility.id, unitType: 'infantry', label: 'first' });
+          queueFutureOrder(1, 2, { type: 'PRODUCE', cost: 2, baseId: secondFacility.id, unitType: 'infantry', label: 'second' });
+          state.phase = 'POST_RESOLUTION';
+          NET.nextReady = { 1: true, 2: true };
+          NET.locked[2] = true;
+          promptsOnline = 0; sent = []; resolutions = 0;
+          beginNextTurn();
+          check(state.turn === 2 && promptsOnline === 0 && resolutions === 1 &&
+            sent.some(m => m.t === 'orders' && m.orders.length === 2),
+            'auto-pass waits for next-turn orders to be promoted before checking AP');
+          NET.conn = null; NET.autoPass = false; NET.peerAutoPass = false; NET.warnUnusedAP = true;
+          window.confirm = realConfirm;
+          runSimultaneousResolution = realResolution;
+
+          fixture();
+          NET.role = 1; NET.conn = { open: true, send: message => sent.push(message), close: () => {} };
+          state.phase = 'POST_RESOLUTION'; NET.nextReady = { 1: false, 2: false };
+          const hiddenEnemy = spawnUnit(2, 'infantry', 40, 30);
+          resolutionReplay.start = performance.now();
+          recordResolutionFrame();
+          recordResolutionFrame();
+          resolutionReplay.frames[1].time = 100;
+          startOnlineReview();
+          updateUI();
+          check(onlineReview.deadline - performance.now() > 9900 &&
+            !document.getElementById('btn-replay-resolution').classList.contains('hidden') &&
+            !isEntityVisible(hiddenEnemy, 1, resolutionReplay.frames[0].entities,
+              resolutionReplay.frames[0].destroyedBuildings, resolutionReplay.frames[0].drones),
+            'online review starts with ten seconds and replay retains fog of war');
+          sent = [];
+          updateOnlineReview();
+          check(sent.length === 0 && !NET.nextReady[1], 'online review does not advance before the deadline');
+          startResolutionReplay();
+          onlineReview.deadline = performance.now() - 1;
+          updateOnlineReview();
+          check(!!resolutionReplay.playback && sent.length === 0 && !NET.nextReady[1],
+            'an active replay delays readiness after the deadline');
+          await new Promise(resolve => setTimeout(resolve, 200));
+          check(!resolutionReplay.playback && NET.nextReady[1] &&
+            sent.filter(m => m.t === 'next').length === 1 && onlineReview.timer === null,
+            'finishing replay sends readiness once after the deadline');
+          check(document.getElementById('btn-replay-resolution').disabled,
+            'replay cannot restart after the player is ready');
+
+          fixture();
+          NET.role = 1; NET.conn = { open: true, send: message => sent.push(message), close: () => {} };
+          state.phase = 'POST_RESOLUTION'; NET.nextReady = { 1: false, 2: false };
+          sent = [];
+          startOnlineReview();
+          readyForNextTurn();
+          check(NET.nextReady[1] && sent.filter(m => m.t === 'next').length === 1 && onlineReview.timer === null,
+            'manual readiness cancels the online review timer');
+          NET.nextReady = { 1: false, 2: false };
+          startOnlineReview();
+          resetCampaign(false);
+          check(onlineReview.timer === null, 'campaign reset cancels the online review timer');
+          state.phase = 'POST_RESOLUTION';
+          startOnlineReview();
+          netDisconnect();
+          check(onlineReview.timer === null, 'disconnect cancels the online review timer');
+
+          updateUI();
+          check(document.getElementById('btn-auto-pass').classList.contains('hidden'),
+            'auto-pass controls do not appear in hot-seat mode');
+          return messages;
+        })()`);
+        result.textContent = messages.join('\n');
+        result.dataset.status = 'passed';
+      } catch (error) {
+        result.textContent = error.stack || String(error);
+        result.dataset.status = 'failed';
+      }
+    });
+  </script>
+</body>
+</html>

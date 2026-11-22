@@ -5,7 +5,7 @@
  * Unit fields:      category (land|air|sea), speed (inches per leg), hp, atk (dice sides),
  *                   range (inches), prodCooldown (turns between builds), plus optional
  *                   mechanic metadata (minRange, blastRadius, actionCost, canEnterBuilding,
- *                   maxBridgeSpan, maxResupplyCharges, stealableAmmo, requiresRtbResupply,
+ *                   maxBridgeSpan, maxBarrierLength, maxResupplyCharges, stealableAmmo, requiresRtbResupply,
  *                   droneRange, droneRevealRange, droneDurationTurns, canProduceAir,
  *                   canReloadAir, sonarRange, missileInterceptDie, startsSubmerged,
  *                   transientUntilQuietMove)
@@ -52,7 +52,7 @@ const UNIT_DEFS = {
     name: 'Artillery', shape: 'Triangle', category: 'land',
     speed: 1, hp: 3, atk: 5, range: 3, minRange: 1, blastRadius: 0.75,
     prodCooldown: 3, actionCost: 1, indirectFire: true,
-    notes: 'Spends 1 AP to barrage an area within 1"–3" (0.75" blast), firing over B tiles.'
+    notes: 'Spends 1 AP to barrage an area within 1"–3" (0.75" blast), firing over B tiles. Cannot move and barrage in the same turn.'
   },
   sniper_team: {
     name: 'Sniper Team', shape: 'Diamond', category: 'land',
@@ -68,8 +68,8 @@ const UNIT_DEFS = {
   roadblock: {
     name: 'Roadblock', shape: 'Bar', category: 'land',
     speed: 0, hp: 4, atk: 0, range: 0, prodCooldown: 0, actionCost: 2,
-    deployable: true, blocksRoad: true,
-    notes: 'Placed on R tiles (2 AP). Blocks enemy land vehicles until destroyed; cannot move.'
+    deployable: true, blocksRoad: true, maxBarrierLength: 2,
+    notes: 'A land unit places a destroyable barrier up to 2" long (2 AP). Blocks land units of both sides.'
   },
   ammo_convoy: {
     name: 'Mobile Ammo Convoy', shape: 'Cylinder', category: 'land',
