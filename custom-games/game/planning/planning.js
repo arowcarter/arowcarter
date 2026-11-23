@@ -338,10 +338,13 @@
       if (e.kind === 'unit' && UNIT_DEFS[e.type].canEnterBuilding && state.customMap) {
         const cell = getCustomCellAt(e.x, e.y, destroyedBuildings);
         if (cell.type === 'B') {
-          if (entities.some(f => f.kind === 'unit' && f.owner === viewer &&
-              UNIT_DEFS[f.type].canEnterBuilding &&
-              getCustomCellAt(f.x, f.y, destroyedBuildings)?.idx === cell.idx)) return true;
-          if (e.revealedBuilding !== cell.idx) return false;
+          if (entities.some(f => {
+            if (f.kind !== 'unit' || f.owner !== viewer || !UNIT_DEFS[f.type].canEnterBuilding) return false;
+            const friendlyCell = getCustomCellAt(f.x, f.y, destroyedBuildings);
+            return friendlyCell?.type === 'B' &&
+              buildingOccupancyId(f.x, f.y, destroyedBuildings) === buildingOccupancyId(e.x, e.y, destroyedBuildings);
+          })) return true;
+          if (e.revealedBuilding !== buildingOccupancyId(e.x, e.y, destroyedBuildings)) return false;
         }
       }
       return entities.some(f => f.owner === viewer &&
@@ -632,6 +635,17 @@
 
       const from = getPlannedPos(unit, p);
       const def = UNIT_DEFS[unit.type];
+      const destination = buildingOccupancyId(toX, toY);
+      if (def.canEnterBuilding && destination !== null &&
+          state.entities.some(other => {
+            if (other.id === unit.id || other.kind !== 'unit' || other.owner !== p ||
+                !UNIT_DEFS[other.type].canEnterBuilding) return false;
+            const pos = getProjectedPosAtTurn(other, p, getPlanningTurn());
+            return buildingOccupancyId(pos.x, pos.y) === destination;
+          })) {
+        showToast('That building already has a friendly unit assigned to it.', 'warn');
+        return false;
+      }
       if (buildingMoveWait(unit, from.x, from.y, toX, toY, getPlanningTurn())) {
         if (!automatic) {
           showToast('A high-rise requires an interior staging turn before exit.', 'warn');
@@ -651,10 +665,13 @@
       if (def.category === 'land') {
         const trace = traceLandPath(from.x, from.y, toX, toY, !!def.canEnterBuilding, unit, true);
         if (trace.blocked) {
+          if (automatic && state.mode === 'MOVE' && def.canEnterBuilding && isBuildingAt(toX, toY)) {
+            return queueRoute(unit, toX, toY);
+          }
           if (trace.reason === 'ROADBLOCK') {
             showToast('A roadblock blocks this land unit.', 'warn');
           } else if (trace.reason === 'BUILDING') {
-            showToast('Path blocked by buildings! Route around city blocks.', 'danger');
+            showToast('Path blocked by a building. Use Route to Pin / Target or choose a reachable building edge.', 'danger');
           } else {
             showToast('Land units cannot cross water without a road or bridge!', 'warn');
           }
@@ -677,6 +694,9 @@
         return false;
       }
       if (d > maxSpd + 0.05) {
+        if (automatic && state.mode === 'MOVE' && def.canEnterBuilding && isBuildingAt(toX, toY)) {
+          return queueRoute(unit, toX, toY);
+        }
         showToast(`Exceeds leg range (${d.toFixed(2)}" > ${maxSpd.toFixed(1)}"). Click closer!`, 'warn');
         SFX.play('miss');
         return false;

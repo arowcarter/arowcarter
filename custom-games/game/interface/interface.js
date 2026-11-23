@@ -81,7 +81,7 @@
         const unit = getEntityById(state.selectedId);
         if (unit && unit.kind === 'unit' && unit.owner === p) {
           let target = { x: mx, y: my };
-          if (state.customMap && state.showPins) {
+          if (state.customMap && state.showPins && !isBuildingAt(target.x, target.y)) {
             const radius = Math.max(0.35, 12 / Math.max(1, ppi));
             const pins = state.customMap.pins.map(pin => ({
               x: (pin.col + 0.5) * MAP_W / state.customMap.cols,
@@ -863,6 +863,23 @@
           const col = idx % cm.cols, row = Math.floor(idx / cm.cols);
           ctx.fillRect(toPxX(col * MAP_W / cm.cols), toPxY(row * MAP_H / cm.rows),
             MAP_W / cm.cols * ppi + 0.5, MAP_H / cm.rows * ppi + 0.5);
+        }
+        if (state.showBuildingBoxes) {
+          const rubble = new Set(destroyed);
+          ctx.strokeStyle = 'rgba(255, 218, 112, 0.8)';
+          ctx.lineWidth = 1;
+          const cellW = MAP_W / cm.cols, cellH = MAP_H / cm.rows;
+          ctx.beginPath();
+          for (const { idx, mask } of cm.buildingEdges) {
+            if (rubble.has(idx)) continue;
+            const x = toPxX((idx % cm.cols) * cellW), y = toPxY(Math.floor(idx / cm.cols) * cellH);
+            const w = cellW * ppi, h = cellH * ppi;
+            if (mask & 1) { ctx.moveTo(x, y); ctx.lineTo(x + w, y); }
+            if (mask & 2) { ctx.moveTo(x + w, y); ctx.lineTo(x + w, y + h); }
+            if (mask & 4) { ctx.moveTo(x, y + h); ctx.lineTo(x + w, y + h); }
+            if (mask & 8) { ctx.moveTo(x, y); ctx.lineTo(x, y + h); }
+          }
+          ctx.stroke();
         }
         ctx.restore();
       } else {

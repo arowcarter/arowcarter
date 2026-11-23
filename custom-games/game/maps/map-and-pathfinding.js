@@ -204,6 +204,12 @@
       mapObj.offscreenCanvas = off;
     }
 
+    function customMapDimensions(cols, rows) {
+      return cols >= rows
+        ? { width: 68, height: Math.max(28, Number((68 * rows / cols).toFixed(2))) }
+        : { width: Math.max(28, Number((68 * cols / rows).toFixed(2))), height: 68 };
+    }
+
     function finalizeCustomMap(name, cols, rows, types, totalElev, groundElev, bldgHeight, pins) {
       if (!Number.isFinite(cols) || !Number.isFinite(rows) || cols < 8 || rows < 8) {
         throw new Error(`Invalid map dimensions (${cols}×${rows}). Minimum grid size is 8×8.`);
@@ -226,11 +232,45 @@
 
       const bldgTier = new Uint8Array(total);
       const bldgHp = new Uint8Array(total);
+      const buildingGroups = new Int32Array(total).fill(-1);
+      const buildingMembers = {};
+      const buildingEdges = [];
+      for (let i = 0; i < total; i++) {
+        if (types[i] !== 'B' || buildingGroups[i] !== -1) continue;
+        const members = [i];
+        buildingGroups[i] = i;
+        for (let j = 0; j < members.length; j++) {
+          const current = members[j], col = current % cols, row = Math.floor(current / cols);
+          const neighbors = [
+            row > 0 ? current - cols : -1,
+            col + 1 < cols ? current + 1 : -1,
+            row + 1 < rows ? current + cols : -1,
+            col > 0 ? current - 1 : -1
+          ];
+          let edgeMask = 0;
+          for (let side = 0; side < neighbors.length; side++) {
+            const next = neighbors[side];
+            if (next < 0 || types[next] !== 'B') {
+              edgeMask |= 1 << side;
+            } else if (buildingGroups[next] === -1) {
+              buildingGroups[next] = i;
+              members.push(next);
+            }
+          }
+          if (edgeMask) buildingEdges.push({ idx: current, mask: edgeMask });
+        }
+        buildingMembers[i] = members;
+      }
       for (let i = 0; i < total; i++) {
         if (types[i] !== 'B') continue;
         const ratio = maxBldg > 0 ? bldgHeight[i] / maxBldg : 0;
         bldgTier[i] = ratio <= 0.25 ? 1 : ratio <= 0.6 ? 2 : 3;
         bldgHp[i] = bldgTier[i];
+      }
+      for (const members of Object.values(buildingMembers)) {
+        let tier = 1;
+        for (const i of members) tier = Math.max(tier, bldgTier[i]);
+        for (const i of members) bldgTier[i] = bldgHp[i] = tier;
       }
 
       const validPins = (pins || []).filter(p =>
@@ -249,6 +289,9 @@
         bldgHeight,
         bldgTier,
         bldgHp,
+        buildingGroups,
+        buildingMembers,
+        buildingEdges,
         minElev,
         maxElev,
         maxBldg,
@@ -599,13 +642,9 @@
       state.showPins = true;
 
       // 4x Aspect-True Inch Scaling: longest edge = 68", shortest edge >= 28"
-      if (mapObj.cols >= mapObj.rows) {
-        MAP_W = 68;
-        MAP_H = Math.max(28, Number((68 * (mapObj.rows / mapObj.cols)).toFixed(2)));
-      } else {
-        MAP_H = 68;
-        MAP_W = Math.max(28, Number((68 * (mapObj.cols / mapObj.rows)).toFixed(2)));
-      }
+      const dimensions = customMapDimensions(mapObj.cols, mapObj.rows);
+      MAP_W = dimensions.width;
+      MAP_H = dimensions.height;
 
       document.getElementById('hud-map-scale-sub').textContent =
         `v2.2 • 4× CUSTOM MAP (${MAP_W.toFixed(1)}"×${MAP_H.toFixed(1)}", ${mapObj.cols}×${mapObj.rows} GRID)`;
@@ -677,13 +716,14 @@
         col,
         row,
         idx,
+        buildingId: cm.buildingGroups?.[idx] >= 0 ? cm.buildingGroups[idx] : idx,
         type: cm.types[idx] === 'B' && destroyedBuildings.includes(idx) ? 'G' : cm.types[idx],
         totalElev: cm.types[idx] === 'B' && destroyedBuildings.includes(idx) ? cm.groundElev[idx] : cm.totalElev[idx],
         groundElev: cm.groundElev[idx],
         bldgHeight: cm.types[idx] === 'B' && destroyedBuildings.includes(idx) ? 0 : cm.bldgHeight[idx],
         bldgTier: cm.types[idx] === 'B' && !destroyedBuildings.includes(idx) ? cm.bldgTier[idx] || 1 : 0,
         bldgHp: cm.types[idx] === 'B' && !destroyedBuildings.includes(idx)
-          ? Math.max(0, (cm.bldgHp[idx] || 1) - (state.buildingDamage[idx] || 0)) : 0
+          ? Math.max(0, (cm.bldgHp[idx] || 1) - (state.buildingDamage[cm.buildingGroups?.[idx] >= 0 ? cm.buildingGroups[idx] : idx] || 0)) : 0
       };
     }
 
@@ -702,6 +742,11 @@
       if (!state.customMap) return false;
       const cell = getCustomCellAt(x, y);
       return cell ? cell.type === 'B' : false;
+    }
+
+    function buildingOccupancyId(x, y, destroyedBuildings = state.destroyedBuildings) {
+      const cell = getCustomCellAt(x, y, destroyedBuildings);
+      return cell?.type === 'B' ? cell.buildingId : null;
     }
 
     function isPointOnBridge(x, y) {
@@ -732,20 +777,23 @@
     }
 
     function buildingTransition(x1, y1, x2, y2) {
-      const start = getCustomCellAt(x1, y1), end = getCustomCellAt(x2, y2);
-      return !!start && !!end && start.idx !== end.idx && (start.type === 'B' || end.type === 'B');
+      const start = buildingOccupancyId(x1, y1), end = buildingOccupancyId(x2, y2);
+      return (start !== null || end !== null) && start !== end;
     }
 
     function buildingMoveWait(unit, x1, y1, x2, y2, turn, includePlans = true) {
       const start = getCustomCellAt(x1, y1), end = getCustomCellAt(x2, y2);
-      if (!start || !end || start.type !== 'B' || start.idx === end.idx) return false;
+      if (!start || !end || start.type !== 'B' ||
+          (end.type === 'B' && buildingOccupancyId(x1, y1) === buildingOccupancyId(x2, y2))) return false;
       if (start.bldgTier !== 3 || ['specops', 'breacher', 'breacher_squad'].includes(unit.type)) return false;
       let entered = unit.buildingEnteredTurn ?? (state.turn - 1);
       if (includePlans) {
         for (const { order, turn: plannedTurn } of allQueuedOrders(unit.owner)) {
           if (plannedTurn >= turn || order.invalid || order.type !== 'MOVE' || order.unitId !== unit.id) continue;
           const from = getCustomCellAt(order.fromX, order.fromY), to = getCustomCellAt(order.toX, order.toY);
-          if (to && to.type === 'B' && from?.idx !== to.idx) entered = plannedTurn;
+          if (to && to.type === 'B' &&
+              (from?.type !== 'B' || buildingOccupancyId(order.fromX, order.fromY) !==
+                buildingOccupancyId(order.toX, order.toY))) entered = plannedTurn;
         }
       }
       return turn <= entered + 1;
@@ -763,9 +811,9 @@
       let prevX = x1, prevY = y1;
       const start = getCustomCellAt(x1, y1), end = getCustomCellAt(x2, y2);
       const startBuilding = start?.type === 'B', endBuilding = end?.type === 'B';
+      const startId = buildingOccupancyId(x1, y1), endId = buildingOccupancyId(x2, y2);
       if (startBuilding || endBuilding) {
-        if (!canEnterBuilding || Math.abs(start.col - end.col) > 1 || Math.abs(start.row - end.row) > 1 ||
-            (startBuilding && endBuilding && start.idx !== end.idx) ||
+        if (!canEnterBuilding ||
             (startBuilding && !endBuilding && !['G', 'R'].includes(end.type)) ||
             (endBuilding && !startBuilding && !['G', 'R'].includes(start.type))) {
           return { blocked: true, reason: 'BUILDING', x: x1, y: y1 };
@@ -774,6 +822,8 @@
       const roadblocks = unit ? state.entities.filter(e => e.kind === 'unit' && UNIT_DEFS[e.type].blocksRoad &&
         (!visibleOnly || isEntityVisible(e, unit.owner))) : [];
       const leaving = new Set(roadblocks.filter(e => distanceToEntity(x1, y1, e) <= 0.08).map(e => e.id));
+      let crossedBoundary = false;
+      let enteredNextBuilding = false;
       for (let i = 1; i <= steps; i++) {
         const t = i / steps;
         const sx = x1 + (x2 - x1) * t;
@@ -787,8 +837,22 @@
         }
         const cell = getCustomCellAt(sx, sy);
         const building = cell?.type === 'B';
+        const buildingId = building ? buildingOccupancyId(sx, sy) : null;
+        if (startBuilding && endBuilding && !building) {
+          return { blocked: true, reason: 'BUILDING', x: sx, y: sy };
+        }
         if (building && (!canEnterBuilding ||
-            ((!startBuilding || cell.idx !== start.idx) && (!endBuilding || cell.idx !== end.idx)))) {
+            ((!startBuilding || buildingId !== startId) &&
+             (!endBuilding || buildingId !== endId)) ||
+            (startBuilding && !endBuilding && crossedBoundary))) {
+          return { blocked: true, reason: 'BUILDING', x: sx, y: sy };
+        }
+        if (startBuilding && endBuilding && startId !== endId) {
+          if (buildingId === endId) enteredNextBuilding = true;
+          else if (enteredNextBuilding) return { blocked: true, reason: 'BUILDING', x: sx, y: sy };
+        }
+        if ((startBuilding && !building) || (endBuilding && building)) crossedBoundary = true;
+        if (endBuilding && !building && crossedBoundary) {
           return { blocked: true, reason: 'BUILDING', x: sx, y: sy };
         }
         if (!building && !isLandForUnit(sx, sy)) {

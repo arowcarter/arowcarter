@@ -419,6 +419,12 @@
       e.target.textContent = `Engage: ${state.showRanges ? 'ON' : 'OFF'}`;
     });
 
+    document.getElementById('btn-toggle-building-boxes').addEventListener('click', (e) => {
+      state.showBuildingBoxes = !state.showBuildingBoxes;
+      e.currentTarget.textContent = `Buildings: ${state.showBuildingBoxes ? 'ON' : 'OFF'}`;
+      e.currentTarget.setAttribute('aria-pressed', String(state.showBuildingBoxes));
+    });
+
     document.getElementById('btn-toggle-pins').addEventListener('click', (e) => {
       state.showPins = !state.showPins;
       e.target.textContent = `Pins: ${state.showPins ? 'ON' : 'OFF'}`;

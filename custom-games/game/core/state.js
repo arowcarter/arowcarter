@@ -157,6 +157,7 @@
       showZones: true,
       showRanges: true,
       showPins: true,
+      showBuildingBoxes: false,
       hoverMap: null,
       effects: [],
       destroyedBuildings: [],

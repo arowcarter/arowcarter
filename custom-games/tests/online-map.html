@@ -63,6 +63,8 @@
           cols: state.customMap.cols, rows: state.customMap.rows, types: state.customMap.types,
           totalElev: state.customMap.totalElev, groundElev: state.customMap.groundElev,
           bldgHeight: state.customMap.bldgHeight, pins: state.customMap.pins,
+          buildingGroups: Array.from(state.customMap.buildingGroups),
+          buildingEdges: state.customMap.buildingEdges,
           width: MAP_W, height: MAP_H
         })`);
         if (mapData(host) !== mapData(guest)) throw new Error('The received map does not match the host map.');

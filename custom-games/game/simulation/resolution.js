@@ -107,7 +107,7 @@
     function unitBuildingCell(unit) {
       if (!unit || unit.kind !== 'unit' || !UNIT_DEFS[unit.type].canEnterBuilding) return null;
       const cell = getCustomCellAt(unit.x, unit.y);
-      return cell?.type === 'B' ? cell : null;
+      return cell?.type === 'B' ? { ...cell, buildingId: buildingOccupancyId(unit.x, unit.y) } : null;
     }
 
     function unitEngagementRange(unit, destroyedBuildings = state.destroyedBuildings) {
@@ -120,7 +120,7 @@
     function contestedBuilding(unit) {
       const cell = unitBuildingCell(unit);
       if (!cell) return false;
-      const occupants = state.entities.filter(e => unitBuildingCell(e)?.idx === cell.idx);
+      const occupants = state.entities.filter(e => unitBuildingCell(e)?.buildingId === cell.buildingId);
       return occupants.some(e => e.owner !== unit.owner) && occupants.some(e => !e.ammoSpent);
     }
 
@@ -128,13 +128,16 @@
       const def = UNIT_DEFS[attacker.type];
       if (!state.customMap || (def.category === 'air' && !def.lowAltitudeFire) ||
           (def.category !== 'air' && target.kind === 'unit' && UNIT_DEFS[target.type].category === 'air')) return false;
-      const start = getCustomCellAt(attacker.x, attacker.y), end = getCustomCellAt(target.x, target.y);
+      const startId = buildingOccupancyId(attacker.x, attacker.y), endId = buildingOccupancyId(target.x, target.y);
       const cm = state.customMap, distance = distIn(attacker.x, attacker.y, target.x, target.y);
       const steps = Math.max(1, Math.ceil(distance / Math.min(MAP_W / cm.cols, MAP_H / cm.rows) * 4));
       for (let i = 1; i < steps; i++) {
         const cell = getCustomCellAt(attacker.x + (target.x - attacker.x) * i / steps,
           attacker.y + (target.y - attacker.y) * i / steps);
-        if (cell.idx !== start.idx && cell.idx !== end.idx && cell.type === 'B' &&
+        const id = buildingOccupancyId(attacker.x + (target.x - attacker.x) * i / steps,
+          attacker.y + (target.y - attacker.y) * i / steps);
+        if (cell.type === 'B' &&
+            id !== startId && id !== endId &&
             (def.lowAltitudeFire ? cell.bldgTier === 3 : cell.bldgTier >= 2 || def.range <= 1)) return true;
       }
       return false;
@@ -147,8 +150,8 @@
       if (target.kind === 'unit' && target.submerged &&
           (!(aDef.sonarRange || aDef.startsSubmerged) || !isEntityVisible(target, attacker.owner))) return false;
       const aCell = unitBuildingCell(attacker), tCell = unitBuildingCell(target);
-      const sameBuilding = aCell && tCell && aCell.idx === tCell.idx;
-      if (tCell && !sameBuilding && target.revealedBuilding !== tCell.idx &&
+      const sameBuilding = aCell && tCell && aCell.buildingId === tCell.buildingId;
+      if (tCell && !sameBuilding && target.revealedBuilding !== tCell.buildingId &&
           !state.drones.some(d => d.owner === attacker.owner &&
             distanceToEntity(d.x, d.y, target) <= d.revealRange + 0.03)) return false;
       if (!sameBuilding && distanceToEntity(attacker.x, attacker.y, target) > unitEngagementRange(attacker) + 0.03) return false;
@@ -184,18 +187,21 @@
     function damageBuildingAt(idx, owner, destroyed, directHeavyStrike = false) {
       const cm = state.customMap;
       if (!cm || cm.types[idx] !== 'B' || state.destroyedBuildings.includes(idx)) return;
+      const id = cm.buildingGroups?.[idx] >= 0 ? cm.buildingGroups[idx] : idx;
+      const members = cm.buildingMembers[id] || [idx];
       const tier = cm.bldgTier[idx] || 1;
-      state.buildingDamage[idx] = (state.buildingDamage[idx] || 0) +
+      state.buildingDamage[id] = (state.buildingDamage[id] || 0) +
         (directHeavyStrike && tier === 2 ? 2 : 1);
-      if (state.buildingDamage[idx] < (cm.bldgHp[idx] || 1)) return;
-      state.destroyedBuildings.push(idx);
+      if (state.buildingDamage[id] < (cm.bldgHp[idx] || 1)) return;
       for (const target of state.entities) {
         if (target.kind === 'unit' && UNIT_DEFS[target.type].category === 'land' &&
-            getCustomCellAt(target.x, target.y).idx === idx) {
+            getCustomCellAt(target.x, target.y).type === 'B' &&
+            getCustomCellAt(target.x, target.y).buildingId === id) {
           if (!destroyed.has(target.id)) state.stats.kills[owner]++;
           destroyed.add(target.id);
         }
       }
+      for (const member of members) state.destroyedBuildings.push(member);
     }
 
     function applyAreaBlast(owner, x, y, radius, attack, destroyed, label, source = null, immuneMainBases = false) {
@@ -219,6 +225,8 @@
       const maxCol = Math.min(cm.cols - 1, Math.floor((x + radius) / cellW));
       const minRow = Math.max(0, Math.floor((y - radius) / cellH));
       const maxRow = Math.min(cm.rows - 1, Math.floor((y + radius) / cellH));
+      const hitBuildings = new Set();
+      const directCell = label === 'MISSILE' ? getCustomCellAt(x, y) : null;
       for (let row = minRow; row <= maxRow; row++) {
         for (let col = minCol; col <= maxCol; col++) {
           const idx = row * cm.cols + col;
@@ -226,7 +234,10 @@
           const nearestY = Math.max(row * cellH, Math.min(y, (row + 1) * cellH));
           if (cm.types[idx] !== 'B' || state.destroyedBuildings.includes(idx) ||
               distIn(x, y, nearestX, nearestY) > radius) continue;
-          const directMissile = label === 'MISSILE' && getCustomCellAt(x, y).idx === idx;
+          const id = cm.buildingGroups?.[idx] >= 0 ? cm.buildingGroups[idx] : idx;
+          if (hitBuildings.has(id)) continue;
+          hitBuildings.add(id);
+          const directMissile = directCell?.type === 'B' && directCell.buildingId === id;
           damageBuildingAt(idx, owner, destroyed, directMissile);
         }
       }
@@ -339,6 +350,43 @@
               }
             }
           }
+          let occupancyChanged;
+          do {
+            occupancyChanged = false;
+            const animations = new Map(activeAnims.map(a => [a.unit.id, a]));
+            const occupants = new Map();
+            for (const unit of state.entities) {
+              if (unit.kind !== 'unit' || !UNIT_DEFS[unit.type].canEnterBuilding) continue;
+              const animation = animations.get(unit.id);
+              const id = buildingOccupancyId(animation ? animation.toX : unit.x, animation ? animation.toY : unit.y);
+              if (id === null) continue;
+              if (!occupants.has(id)) occupants.set(id, []);
+              occupants.get(id).push({ unit, animation });
+            }
+            const cancel = new Set();
+            for (const [id, members] of occupants) {
+              if (members.length < 2) continue;
+              for (const { unit, animation } of members) {
+                if (!animation) continue;
+                if (buildingOccupancyId(animation.fromX, animation.fromY) !== id) cancel.add(unit.id);
+              }
+            }
+            for (const members of groupPaths.values()) {
+              if (members.some(({ unit }) => cancel.has(unit.id))) {
+                for (const { unit } of members) cancel.add(unit.id);
+              }
+            }
+            for (const id of cancel) {
+              const animation = animations.get(id);
+              if (!animation || blockedPaths.has(id)) continue;
+              animation.toX = animation.fromX;
+              animation.toY = animation.fromY;
+              blockedPaths.add(id);
+              movedUnitIds.delete(id);
+              occupancyChanged = true;
+              addLog(`⚠️ ${pName(animation.unit.owner)} ${UNIT_DEFS[animation.unit.type].name} could not complete its move.`, 'amber', [animation.unit]);
+            }
+          } while (occupancyChanged);
           const duration = 520;
           const startTime = performance.now();
           let processedTick = 0;
@@ -355,7 +403,7 @@
                   a.unit.y = a.fromY + (a.toY - a.fromY) * fixedEase;
                   if (UNIT_DEFS[a.unit.type].canEnterBuilding && a.unit.revealedBuilding != null &&
                       isBuildingAt(a.unit.x, a.unit.y) &&
-                      getCustomCellAt(a.unit.x, a.unit.y).idx !== a.unit.revealedBuilding) {
+                      buildingOccupancyId(a.unit.x, a.unit.y) !== a.unit.revealedBuilding) {
                     a.unit.revealedBuilding = null;
                   }
                 }
@@ -377,10 +425,10 @@
           });
           for (const a of activeAnims) {
             const from = getCustomCellAt(a.fromX, a.fromY), to = unitBuildingCell(a.unit);
-            if (to && from?.idx !== to.idx) {
+            if (to && (from?.type !== 'B' || buildingOccupancyId(a.fromX, a.fromY) !== to.buildingId)) {
               a.unit.buildingEnteredTurn = state.turn;
               a.unit.buildingBreacher = state.entities.some(e => e.owner !== a.unit.owner &&
-                unitBuildingCell(e)?.idx === to.idx) ? to.idx : null;
+                unitBuildingCell(e)?.buildingId === to.buildingId) ? to.buildingId : null;
             }
             if (!to) {
               a.unit.buildingEnteredTurn = null;
@@ -440,7 +488,7 @@
         const cell = unitBuildingCell(unit);
         const contested = contestedBuilding(unit);
         const candidates = state.entities.filter(t => canAutoEngage(unit, t) &&
-          (!contested || unitBuildingCell(t)?.idx === cell.idx));
+          (!contested || unitBuildingCell(t)?.buildingId === cell.buildingId));
         if (candidates.length === 0) continue;
 
         candidates.sort((a, b) => {
@@ -461,8 +509,8 @@
         for (const attacker of attackers) {
           if (UNIT_DEFS[attacker.type].transientUntilQuietMove) attacker.submerged = false;
           const cell = unitBuildingCell(attacker);
-          if (cell && unitBuildingCell(target)?.idx !== cell.idx) {
-            attacker.revealedBuilding = cell.idx;
+          if (cell && unitBuildingCell(target)?.buildingId !== cell.buildingId) {
+            attacker.revealedBuilding = cell.buildingId;
           }
         }
       }
@@ -482,8 +530,8 @@
           const target = eligible[0];
           if (UNIT_DEFS[defender.type].transientUntilQuietMove) defender.submerged = false;
           const cell = unitBuildingCell(defender);
-          if (cell && unitBuildingCell(target)?.idx !== cell.idx) {
-            defender.revealedBuilding = cell.idx;
+          if (cell && unitBuildingCell(target)?.buildingId !== cell.buildingId) {
+            defender.revealedBuilding = cell.buildingId;
           }
           if (!targetAttackers.has(target.id)) targetAttackers.set(target.id, []);
           targetAttackers.get(target.id).push(defender);
@@ -506,9 +554,9 @@
           const groups = new Map();
           for (const attacker of attackers) {
             const attackerCell = combatCells.get(attacker.id);
-            const modifier = targetCell && attacker.type !== 'strategic_bomber' && attackerCell?.idx !== targetCell.idx
-              ? 'cover' : targetCell && attackerCell?.idx === targetCell.idx &&
-                attacker.buildingBreacher === targetCell.idx &&
+            const modifier = targetCell && attacker.type !== 'strategic_bomber' && attackerCell?.buildingId !== targetCell.buildingId
+              ? 'cover' : targetCell && attackerCell?.buildingId === targetCell.buildingId &&
+                attacker.buildingBreacher === targetCell.buildingId &&
                 ['specops', 'breacher', 'breacher_squad'].includes(attacker.type) ? 'breach' : 'normal';
             if (!groups.has(modifier)) groups.set(modifier, []);
             groups.get(modifier).push(attacker);

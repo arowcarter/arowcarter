@@ -26,6 +26,13 @@
             return types;
           }
           sleep = async () => {};
+          const buildingToggle = document.getElementById('btn-toggle-building-boxes');
+          check(!state.showBuildingBoxes && buildingToggle.getAttribute('aria-pressed') === 'false',
+            'building boxes are hidden by default');
+          buildingToggle.click();
+          check(state.showBuildingBoxes && buildingToggle.getAttribute('aria-pressed') === 'true',
+            'building box visibility can be turned on');
+          buildingToggle.click();
           fixture();
           const originalInfantrySpeed = UNIT_DEFS.infantry.speed;
           UNIT_DEFS.infantry.speed = 1.75;
@@ -381,41 +388,41 @@
 
           fixture();
           const tierTypes = Array(64).fill('G'), heights = Array(64).fill(0), tierZero = Array(64).fill(0);
-          for (const [idx, height] of [[1, 25], [2, 60], [3, 100]]) {
+          for (const [idx, height] of [[1, 25], [3, 60], [5, 100]]) {
             tierTypes[idx] = 'B'; heights[idx] = height;
           }
           state.customMap = finalizeCustomMap('tiers', 8, 8, tierTypes, tierZero.slice(), tierZero.slice(), heights, []);
-          check(state.customMap.bldgTier[1] === 1 && state.customMap.bldgTier[2] === 2 &&
-            state.customMap.bldgTier[3] === 3, 'building tiers use relative height boundaries');
+          check(state.customMap.bldgTier[1] === 1 && state.customMap.bldgTier[3] === 2 &&
+            state.customMap.bldgTier[5] === 3, 'building tiers use relative height boundaries');
           const casualties = new Set();
-          const occupant = spawnUnit(2, 'infantry', 29.75, 2.75);
-          damageBuildingAt(3, 1, casualties);
-          damageBuildingAt(3, 1, casualties);
-          check(!state.destroyedBuildings.includes(3) && casualties.size === 0 &&
-            getCustomCellAt(29.75, 2.75).bldgHp === 1, 'high-rise survives two heavy hits');
+          const occupant = spawnUnit(2, 'infantry', 46.75, 2.75);
+          damageBuildingAt(5, 1, casualties);
+          damageBuildingAt(5, 1, casualties);
+          check(!state.destroyedBuildings.includes(5) && casualties.size === 0 &&
+            getCustomCellAt(46.75, 2.75).bldgHp === 1, 'high-rise survives two heavy hits');
           const damageSnapshot = netSnapshot();
           state.buildingDamage = {};
           netApplySnapshot(damageSnapshot);
-          check(state.buildingDamage[3] === 2, 'online snapshot preserves structural damage');
-          damageBuildingAt(3, 1, casualties);
-          check(state.destroyedBuildings.includes(3) && casualties.has(occupant.id) &&
-            getCustomCellAt(29.75, 2.75).type === 'G', 'third heavy hit collapses high-rise and kills occupants');
-          damageBuildingAt(2, 1, casualties, true);
-          check(state.destroyedBuildings.includes(2), 'a direct heavy strike collapses a mid-rise');
+          check(state.buildingDamage[5] === 2, 'online snapshot preserves structural damage');
+          damageBuildingAt(5, 1, casualties);
+          check(state.destroyedBuildings.includes(5) && casualties.has(occupant.id) &&
+            getCustomCellAt(46.75, 2.75).type === 'G', 'third heavy hit collapses high-rise and kills occupants');
+          damageBuildingAt(3, 1, casualties, true);
+          check(state.destroyedBuildings.includes(3), 'a direct heavy strike collapses a mid-rise');
           damageBuildingAt(1, 1, casualties);
           check(state.destroyedBuildings.includes(1), 'one heavy hit collapses a low-rise');
 
           fixture();
           state.customMap = finalizeCustomMap('tiers', 8, 8, tierTypes, tierZero.slice(), tierZero.slice(), heights, []);
-          const bomber = spawnUnit(1, 'strategic_bomber', 20.75, 2.75);
-          const bomberTarget = spawnUnit(2, 'infantry', 21.25, 2.75);
+          const bomber = spawnUnit(1, 'strategic_bomber', 29.25, 2.75);
+          const bomberTarget = spawnUnit(2, 'infantry', 29.75, 2.75);
           state.drones.push({ owner: 1, x: bomberTarget.x, y: bomberTarget.y, revealRange: 1, expiresTurn: 2 });
           const bomberRoll = rollDie;
           rollDie = sides => sides === bomberTarget.hp ? 1 : sides;
           toggleEngageOrder(bomber);
           await runSimultaneousResolution();
           rollDie = bomberRoll;
-          check(state.destroyedBuildings.includes(2),
+          check(state.destroyedBuildings.includes(3),
             'a successful bomber strike collapses a mid-rise');
 
           fixture();
@@ -440,6 +447,138 @@
           check(queueMoveLeg(special, tower.x, tower.y) && queueMoveLeg(special, exit.x, exit.y) &&
             state.futurePlans[1].some(o => o.unitId === special.id && o.targetTurn === 2),
             'Special Forces exit a high-rise without an extra staging turn');
+
+          fixture();
+          const squareSize = 128, squareTypes = Array(squareSize * squareSize).fill('G');
+          const squareZero = Array(squareTypes.length).fill(0);
+          for (let row = 41; row < 43; row++) for (let col = 41; col < 43; col++) {
+            squareTypes[row * squareSize + col] = 'B';
+          }
+          squareTypes[41 * squareSize + 41] = 'G';
+          squareTypes[41 * squareSize + 43] = 'B';
+          squareTypes[41 * squareSize + 46] = 'B';
+          state.customMap = finalizeCustomMap('square buildings', squareSize, squareSize, squareTypes,
+            squareZero.slice(), squareZero.slice(), squareZero.slice(), []);
+          MAP_H = 68;
+          const squarePoint = (col, row) => ({ x: (col + 0.5) * MAP_W / squareSize, y: (row + 0.5) * MAP_H / squareSize });
+          const nearSquare = squarePoint(41, 41), insideSquare = squarePoint(42, 41);
+          const squareUnit = spawnUnit(1, 'specops', nearSquare.x, nearSquare.y);
+          const otherSquareCell = squarePoint(41, 42), neighboringSquare = squarePoint(46, 41);
+          const edge = state.customMap.buildingEdges.find(e => e.idx === 41 * squareSize + 42);
+          check(edge?.mask === 9 && state.customMap.types[41 * squareSize + 45] === 'G',
+            'outlines trace building tile edges without covering neighboring ground');
+          const groundTarget = squarePoint(40, 41);
+          const beforeMapX = toMapX, beforeMapY = toMapY;
+          toMapX = x => x; toMapY = y => y;
+          const groundCanvasRect = canvas.getBoundingClientRect();
+          state.selectedId = squareUnit.id; state.mode = 'MOVE';
+          processMapClick(groundCanvasRect.left + groundTarget.x, groundCanvasRect.top + groundTarget.y);
+          check(state.orders[1].some(o => o.unitId === squareUnit.id && o.toX === groundTarget.x && o.toY === groundTarget.y),
+            'clicking ground near a building remains a ground move');
+          toMapX = beforeMapX; toMapY = beforeMapY;
+          clearAllOrders();
+          const boxOccupant = spawnUnit(1, 'infantry', insideSquare.x, insideSquare.y);
+          check(!queueMoveLeg(squareUnit, otherSquareCell.x, otherSquareCell.y),
+            'planning rejects a second unit anywhere in the same building footprint');
+          state.entities = state.entities.filter(e => e.id !== boxOccupant.id);
+          check(getCustomCellAt(insideSquare.x, insideSquare.y).buildingId === getCustomCellAt(otherSquareCell.x, otherSquareCell.y).buildingId &&
+            getCustomCellAt(neighboringSquare.x, neighboringSquare.y).buildingId !== getCustomCellAt(otherSquareCell.x, otherSquareCell.y).buildingId,
+            'connected building cells group together while a gap separates buildings');
+          check(queueMoveLeg(squareUnit, insideSquare.x, insideSquare.y),
+            'foot units can enter beyond the outermost cell of a building group');
+          await runSimultaneousResolution();
+          const squareEnemy = spawnUnit(2, 'infantry', otherSquareCell.x, otherSquareCell.y);
+          check(unitBuildingCell(squareUnit)?.buildingId === unitBuildingCell(squareEnemy)?.buildingId &&
+            contestedBuilding(squareUnit), 'units in different cells of a building group contest the same building');
+          const squareCasualties = new Set();
+          damageBuildingAt(unitBuildingCell(squareUnit).idx, 1, squareCasualties);
+          check(squareCasualties.has(squareUnit.id) && squareCasualties.has(squareEnemy.id) &&
+            getCustomCellAt(insideSquare.x, insideSquare.y).type === 'G' &&
+            getCustomCellAt(neighboringSquare.x, neighboringSquare.y).type === 'B',
+            'collapse affects the entire building footprint but not a separate building');
+
+          fixture();
+          state.customMap = finalizeCustomMap('square contest', squareSize, squareSize, squareTypes,
+            squareZero.slice(), squareZero.slice(), squareZero.slice(), []);
+          MAP_H = 68;
+          const boxBlue = spawnUnit(1, 'infantry', nearSquare.x, nearSquare.y);
+          const boxRed = spawnUnit(2, 'infantry', nearSquare.x, nearSquare.y);
+          state.orders[1].push({ type: 'MOVE', unitId: boxBlue.id, toX: insideSquare.x, toY: insideSquare.y, cost: 0 });
+          state.orders[2].push({ type: 'MOVE', unitId: boxRed.id, toX: otherSquareCell.x, toY: otherSquareCell.y, cost: 0 });
+          await runSimultaneousResolution();
+          check(!unitBuildingCell(boxBlue) && !unitBuildingCell(boxRed),
+            'simultaneous entry into different cells of the same building is blocked');
+
+          fixture();
+          const tallHeights = squareTypes.map(t => t === 'B' ? 100 : 0);
+          state.customMap = finalizeCustomMap('square towers', squareSize, squareSize, squareTypes,
+            squareZero.slice(), squareZero.slice(), tallHeights, []);
+          MAP_H = 68;
+          const routeUnit = spawnUnit(1, 'specops', nearSquare.x, nearSquare.y);
+          check(queueRoute(routeUnit, insideSquare.x, insideSquare.y),
+            'automatic routing can enter a grouped building');
+          await runSimultaneousResolution();
+          check(unitBuildingCell(routeUnit)?.buildingId === getCustomCellAt(insideSquare.x, insideSquare.y).buildingId,
+            'automatic route resolves inside the target building');
+          applyAreaBlast(1, insideSquare.x, insideSquare.y, 1, 0, new Set(), 'BARRAGE');
+          check(state.buildingDamage[unitBuildingCell(routeUnit).buildingId] === 1,
+            'one blast damages a grouped building once even when it hits multiple cells');
+
+          fixture();
+          const denseTypes = Array(squareSize * squareSize).fill('G');
+          const denseHeights = Array(denseTypes.length).fill(0);
+          for (let col = 40; col < 56; col++) {
+            const idx = 40 * squareSize + col;
+            denseTypes[idx] = 'B';
+            denseHeights[idx] = col % 2 ? 10 : 100;
+          }
+          denseTypes[41 * squareSize + 41] = 'B';
+          denseTypes[42 * squareSize + 41] = 'B';
+          denseTypes[42 * squareSize + 42] = 'B';
+          state.customMap = finalizeCustomMap('dense city', squareSize, squareSize, denseTypes,
+            squareZero.slice(), squareZero.slice(), denseHeights, []);
+          MAP_H = 68;
+          const cityEntry = squarePoint(39, 40), cityTarget = squarePoint(53, 40);
+          const cityUnit = spawnUnit(1, 'specops', cityEntry.x, cityEntry.y);
+          check(getCustomCellAt(squarePoint(41, 41).x, squarePoint(41, 41).y).buildingId ===
+            getCustomCellAt(squarePoint(42, 42).x, squarePoint(42, 42).y).buildingId,
+            'connected building cells group together regardless of height');
+          check(queueRoute(cityUnit, cityTarget.x, cityTarget.y), 'routes can reach an interior building tile');
+          const cityMoves = [...state.orders[1], ...state.futurePlans[1]];
+          check(cityMoves.length >= 2 && cityMoves.some(o =>
+            getCustomCellAt(o.toX, o.toY).buildingId === getCustomCellAt(cityTarget.x, cityTarget.y).buildingId),
+            'long routes schedule multiple moves inside a building footprint');
+          const firstSquareSide = squarePoint(40, 40), secondSquareSide = squarePoint(41, 40);
+          check(!traceLandPath(firstSquareSide.x, firstSquareSide.y, secondSquareSide.x, secondSquareSide.y, true, cityUnit).blocked &&
+            traceLandPath(firstSquareSide.x, firstSquareSide.y, secondSquareSide.x, secondSquareSide.y, false, cityUnit).blocked,
+            'foot units can move between adjoining building tiles but vehicles cannot');
+          await runSimultaneousResolution();
+          for (let turn = 0; turn < 20 && state.futurePlans[1].some(o => o.unitId === cityUnit.id); turn++) {
+            beginNextTurn();
+            document.getElementById('btn-handoff-ready').click();
+            await runSimultaneousResolution();
+          }
+          check(unitBuildingCell(cityUnit)?.buildingId === getCustomCellAt(cityTarget.x, cityTarget.y).buildingId,
+            'a multi-turn route resolves inside the target building');
+          clearAllOrders();
+          cityUnit.x = cityEntry.x; cityUnit.y = cityEntry.y;
+          state.phase = 'PLANNING'; state.activePlayer = 1; state.selectedId = cityUnit.id;
+          state.customMap.pins = [{ name: 'Nearby', col: 52, row: 41 }];
+          state.showPins = true;
+          const oldToMapX = toMapX, oldToMapY = toMapY;
+          toMapX = x => x; toMapY = y => y;
+          const canvasRect = canvas.getBoundingClientRect();
+          state.mode = 'MOVE';
+          processMapClick(canvasRect.left + cityTarget.x, canvasRect.top + cityTarget.y);
+          check(state.orders[1].some(o => o.unitId === cityUnit.id) &&
+            state.futurePlans[1].some(o => getCustomCellAt(o.toX, o.toY).buildingId === getCustomCellAt(cityTarget.x, cityTarget.y).buildingId),
+            'Plot Move automatically routes into a distant building');
+          clearAllOrders();
+          state.selectedId = cityUnit.id; state.mode = 'ROUTE';
+          processMapClick(canvasRect.left + cityTarget.x, canvasRect.top + cityTarget.y);
+          check(state.futurePlans[1].some(o => getCustomCellAt(o.toX, o.toY).idx === getCustomCellAt(cityTarget.x, cityTarget.y).idx),
+            'clicking a building with Route targets it instead of a nearby pin');
+          toMapX = oldToMapX; toMapY = oldToMapY;
 
           fixture();
           const tinyCols = 680, tinyRows = 440, tinyCount = tinyCols * tinyRows;
@@ -471,21 +610,9 @@
             tinyTypes, tinyZero.slice(), tinyZero.slice(), tinyHeights, []);
           const groupOne = spawnUnit(1, 'infantry', tinyStart.x, tinyStart.y);
           const groupTwo = spawnUnit(1, 'infantry', tinyStart.x, tinyStart.y + 0.01);
-          check(queueGroupRoute([groupOne, groupTwo], tinyEnd.x, tinyEnd.y + 0.005) &&
-            state.orders[1].filter(o => o.groupRouteId != null).length === 2 &&
-            state.futurePlans[1].filter(o => o.groupRouteId != null && o.targetTurn === 3).length === 2,
-            'group routes keep tiny building transitions and stage the formation together');
-          rescheduleQueuedOrders(1);
-          await runSimultaneousResolution();
-          check(getCustomCellAt(groupOne.x, groupOne.y).idx === tinyBuilding &&
-            getCustomCellAt(groupTwo.x, groupTwo.y).idx === tinyBuilding,
-            'both members of a group enter the building together');
-          beginNextTurn(); document.getElementById('btn-handoff-ready').click();
-          await runSimultaneousResolution();
-          beginNextTurn(); document.getElementById('btn-handoff-ready').click();
-          await runSimultaneousResolution();
-          check(Math.abs(groupOne.x - tinyEnd.x) < 1e-8 && Math.abs(groupTwo.x - tinyEnd.x) < 1e-8,
-            'group route promotion preserves staging and formation through exit');
+          check(!queueGroupRoute([groupOne, groupTwo], tinyEnd.x, tinyEnd.y + 0.005) &&
+            state.orders[1].length === 0 && state.futurePlans[1].length === 0,
+            'group routes cannot put two units in one building and leave no partial orders');
 
           fixture();
           state.customMap.types[urbanIndex] = 'B';
@@ -589,30 +716,45 @@
           const red = spawnUnit(2, 'infantry', exit.x, exit.y);
           state.orders[1].push({ type: 'MOVE', unitId: blue.id, toX: tower.x, toY: tower.y, cost: 0 });
           state.orders[2].push({ type: 'MOVE', unitId: red.id, toX: tower.x, toY: tower.y, cost: 0 });
-          const contestedRoll = rollDie;
-          rollDie = () => 1;
           await runSimultaneousResolution();
-          check(blue.ammoSpent && red.ammoSpent && getEntityById(blue.id) && getEntityById(red.id),
-            'simultaneous building entrants exchange fire without engage orders');
-          beginNextTurn(); document.getElementById('btn-handoff-ready').click();
-          check(queueMoveLeg(blue, street.x, street.y), 'spent opponents can plan an exit');
-          await runSimultaneousResolution();
-          check(getCustomCellAt(blue.x, blue.y).type !== 'B', 'spent opponents can leave after the exchange');
-          rollDie = contestedRoll;
+          check(getCustomCellAt(blue.x, blue.y).type !== 'B' && getCustomCellAt(red.x, red.y).type !== 'B',
+            'simultaneous opposing entrants both stop outside the same building');
 
           fixture();
           state.customMap.types[urbanIndex] = 'B';
           state.customMap.bldgTier[urbanIndex] = 1;
           const breacher = spawnUnit(1, 'specops', street.x, street.y);
           const garrison = spawnUnit(2, 'infantry', tower.x, tower.y);
-          garrison.ammoSpent = true; garrison.hp = 2;
-          state.orders[1].push({ type: 'MOVE', unitId: breacher.id, toX: tower.x, toY: tower.y, cost: 0 });
-          const breachRoll = rollDie, breachValues = [1, 3, 2];
-          rollDie = () => breachValues.shift() || 1;
+          check(queueMoveLeg(breacher, tower.x, tower.y),
+            'a concealed enemy occupant is not disclosed during planning');
           await runSimultaneousResolution();
-          rollDie = breachRoll;
-          check(!getEntityById(garrison.id) && breacher.ammoSpent,
-            'Special Forces use the higher attack die in mandatory close-quarters combat');
+          check(getCustomCellAt(breacher.x, breacher.y).type !== 'B' &&
+            getCustomCellAt(garrison.x, garrison.y).type === 'B',
+            'a hidden enemy occupant prevents entry during resolution');
+
+          fixture();
+          state.customMap.types[urbanIndex] = 'B';
+          const friendlyOccupant = spawnUnit(1, 'infantry', tower.x, tower.y);
+          const friendlyEntrant = spawnUnit(1, 'infantry', street.x, street.y);
+          check(!queueMoveLeg(friendlyEntrant, tower.x, tower.y),
+            'planning rejects a friendly-occupied building');
+          check(queueMoveLeg(friendlyOccupant, exit.x, exit.y) && queueMoveLeg(friendlyEntrant, tower.x, tower.y),
+            'an entrant can plan to replace a departing friendly occupant');
+          await runSimultaneousResolution();
+          check(getCustomCellAt(friendlyEntrant.x, friendlyEntrant.y).type === 'B' &&
+            getCustomCellAt(friendlyOccupant.x, friendlyOccupant.y).type !== 'B',
+            'a building can be entered as its occupant leaves');
+
+          fixture();
+          for (const idx of [urbanIndex - 1, urbanIndex, urbanIndex + 1]) state.customMap.types[idx] = 'B';
+          const chainFirst = spawnUnit(1, 'infantry', street.x, street.y);
+          const chainMiddle = spawnUnit(1, 'infantry', tower.x, tower.y);
+          spawnUnit(1, 'infantry', exit.x, exit.y);
+          state.orders[1].push({ type: 'MOVE', unitId: chainFirst.id, toX: tower.x, toY: tower.y, cost: 0 });
+          state.orders[1].push({ type: 'MOVE', unitId: chainMiddle.id, toX: exit.x, toY: exit.y, cost: 0 });
+          await runSimultaneousResolution();
+          check(chainFirst.x === street.x && chainMiddle.x === tower.x,
+            'blocked departures propagate to other units trying to enter their buildings');
 
           fixture();
           state.customMap.types[urbanIndex] = 'B';

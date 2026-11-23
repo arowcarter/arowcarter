@@ -178,6 +178,9 @@
       <button id="btn-toggle-pins" class="hidden tac-btn px-2 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-rose-300 text-xs font-semibold" title="Toggle Imported Map Landmark Pins">
         Pins: ON
       </button>
+      <button id="btn-toggle-building-boxes" aria-pressed="false" class="tac-btn px-2 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-300 text-xs font-semibold" title="Show building occupancy boxes">
+        Buildings: OFF
+      </button>
       <button id="btn-toggle-zones" class="tac-btn px-2 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-emerald-300 text-xs font-semibold" title="Toggle 3-inch Established Zones">
         Zones: ON
       </button>
@@ -485,7 +488,7 @@
             <h4 class="font-bold text-emerald-400 uppercase text-xs mb-1.5">Action Point Costs &amp; 4× Scale Map Rules</h4>
             <ul class="space-y-1 text-xs">
               <li>• <strong>4× Battlefield Scale (68"×44"):</strong> Default map is 68"×44" and custom maps scale to a 68" longest edge. Outskirts deployment zone is <strong>6.0"</strong>.</li>
-              <li>• <strong>Buildings (B):</strong> Land units cannot cross Building (<code>B</code>) tiles except snipers; aircraft fly over them. Artillery destroys building tiles in its blast area.</li>
+              <li>• <strong>Buildings (B):</strong> Eligible foot units can enter buildings but cannot pass through them in one move; vehicles cannot enter and aircraft fly over them. Heavy attacks can collapse buildings.</li>
               <li>• <strong>Pan &amp; Zoom (1×–8×):</strong> Scroll wheel zooms centered on cursor; hold <strong>Space+Drag</strong>, Middle-Click, or toggle <strong>✋ Pan</strong> to navigate.</li>
               <li>• <strong>Engage / Move:</strong> <strong>0 AP</strong>. <strong>Artillery barrage / Missile:</strong> 1 AP. <strong>Produce:</strong> 2 AP. <strong>Construct / Hub / Repair:</strong> 4 AP.</li>
               <li>• <strong>Victory:</strong> Destroy both enemy Original Main Bases simultaneously.</li>
@@ -515,8 +518,8 @@
         <div class="bg-slate-900/70 border border-slate-700/70 rounded-xl p-3">
           <h4 class="font-bold text-sky-400 uppercase text-xs mb-2">Specialist units</h4>
           <ul class="space-y-1">
-            <li>• Infantry, Special Forces, Snipers and Drone Operators can enter an adjacent building, stopping there for the turn; vehicles cannot. Exit on a later turn. High-rises require an extra staging turn, except for Special Forces. Street contact resupply does not reach inside.</li>
-            <li>• Occupants are hidden from outsiders until they fire, a drone reveals them, or an enemy enters. Opponents inside must exchange fire whenever either is loaded before leaving; Special Forces have close-quarters advantage. Outside fire into a revealed building rolls twice and takes the lower attack roll.</li>
+            <li>• Infantry, Special Forces, Snipers and Drone Operators can enter buildings using Plot Move or Route to Pin / Target; vehicles cannot. Connected building tiles form one building regardless of height. Click an orange building tile to enter; use Buildings to show or hide building outlines. Only one unit, from either side, can occupy a building. If multiple units attempt to enter the same empty building simultaneously, all remain outside. Units stop when entering and can exit on a later turn. High-rises require an extra staging turn, except for Special Forces. Street contact resupply does not reach inside.</li>
+            <li>• Occupants are hidden from outsiders until they fire or a drone reveals them. Outside fire into a revealed building rolls twice and takes the lower attack roll.</li>
             <li>• Low-, mid-, and high-rises use up to 25%, 60%, and 100% of the map's maximum building height. Mid/high buildings block ground direct fire; low buildings block weapons with range at most 1". High-rises also block low-altitude Plane fire; bombers strike from above. Snipers and Drone Operators gain 0.5"/1" range in mid/high buildings.</li>
             <li>• Artillery barrages, missiles and bomber strikes bypass cover. Low/mid/high buildings collapse after 1/2/3 heavy hits; a direct missile or successful bomber strike collapses a mid-rise immediately. Collapse kills all occupants.</li>
             <li>• Artillery spends 1 AP to barrage 1"–3" away, but cannot move and barrage in the same turn. One attack roll hits both sides within 0.75".</li>
