@@ -1,0 +1,62 @@
+name: Publish Tactical Map War Game
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'custom-games/**'
+      - '.github/workflows/publish-tactical-game.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: tactical-game-release
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: windows-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Choose next release version
+        shell: pwsh
+        run: |
+          $latest = [version]'1.4.0'
+          $tags = gh api "repos/$env:GITHUB_REPOSITORY/releases?per_page=100" --paginate --jq '.[].tag_name'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          foreach ($tag in $tags) {
+            if ($tag -match '^tactical-game-v(\d+)\.(\d+)\.(\d+)$') {
+              $version = [version]::new([int]$Matches[1], [int]$Matches[2], [int]$Matches[3])
+              if ($version.Major -lt 256 -and $version.Minor -lt 256 -and $version.Build -lt 65536 -and $version -gt $latest) { $latest = $version }
+            }
+          }
+          $major = $latest.Major
+          $minor = $latest.Minor
+          $patch = $latest.Build + 1
+          if ($patch -ge 65536) { $patch = 0; $minor++ }
+          if ($minor -ge 256) { $minor = 0; $major++ }
+          if ($major -ge 256) { throw 'No higher Windows Installer version is available.' }
+          "GAME_VERSION=$major.$minor.$patch" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: Build installer
+        shell: cmd
+        run: custom-games\desktop\build-installer.cmd
+      - name: Publish release
+        shell: pwsh
+        run: |
+          $tag = "tactical-game-v$env:GAME_VERSION"
+          gh release view $tag --repo $env:GITHUB_REPOSITORY 2>$null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $tag --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --draft --title "Tactical Map War Game $env:GAME_VERSION" --notes "Windows installer for Tactical Map War Game."
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          gh release upload $tag custom-games\desktop\dist\TacticalMapWarGameSetup.msi --repo $env:GITHUB_REPOSITORY --clobber
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          gh release edit $tag --repo $env:GITHUB_REPOSITORY --draft=false
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

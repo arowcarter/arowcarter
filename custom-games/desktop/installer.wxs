@@ -1,0 +1,132 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="Tactical Map War Game" Manufacturer="Tactical Map War Game"
+           Version="$(env.GAME_VERSION)" UpgradeCode="A0C01E99-0E58-4884-B80C-2E1ED9F3A5B6" Scope="perMachine">
+    <MajorUpgrade Schedule="afterInstallInitialize" DowngradeErrorMessage="A newer version is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <Property Id="CREATE_DESKTOP_SHORTCUT" Value="1" Secure="yes" />
+    <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
+    <Property Id="INSTALLINGUSERDESKTOP" Secure="yes">
+      <RegistrySearch Id="CurrentUserDesktop" Root="HKCU"
+                      Key="Software\Microsoft\Windows\CurrentVersion\Explorer\Shell Folders"
+                      Name="Desktop" Type="raw" />
+    </Property>
+    <Property Id="SAVEDUSERDESKTOP">
+      <RegistrySearch Id="SavedUserDesktop" Root="HKLM"
+                      Key="Software\TacticalMapWarGame" Name="DesktopPath" Type="raw" />
+    </Property>
+    <Property Id="COMMONPROGRAMS" Secure="yes">
+      <RegistrySearch Id="CommonProgramsFolder" Root="HKLM"
+                      Key="Software\Microsoft\Windows\CurrentVersion\Explorer\Shell Folders"
+                      Name="Common Programs" Type="raw" />
+    </Property>
+    <SetProperty Id="INSTALLINGUSERDESKTOP" Value="[SAVEDUSERDESKTOP]"
+                 After="AppSearch" Sequence="both" Condition="Installed AND SAVEDUSERDESKTOP" />
+    <Launch Condition="INSTALLINGUSERDESKTOP"
+            Message="The installing user's desktop folder could not be found." />
+    <Launch Condition="COMMONPROGRAMS"
+            Message="The Windows Start menu folder could not be found." />
+    <InstallUISequence>
+      <AppSearch Before="LaunchConditions" />
+      <Show Dialog="InstallOptions" Before="ExecuteAction" Condition="NOT Installed" />
+    </InstallUISequence>
+    <InstallExecuteSequence>
+      <AppSearch Before="LaunchConditions" />
+    </InstallExecuteSequence>
+
+    <StandardDirectory Id="TARGETDIR">
+      <Directory Id="INSTALLINGUSERDESKTOP" Name="." />
+      <Directory Id="COMMONPROGRAMS" Name=".">
+        <Directory Id="ApplicationProgramsFolder" Name="Tactical Map War Game">
+          <Component Id="StartMenuShortcut" Guid="*">
+            <Shortcut Id="GameShortcut" Name="Tactical Map War Game"
+                      Target="[INSTALLFOLDER]TacticalMapWarGame.exe" WorkingDirectory="INSTALLFOLDER" />
+            <RemoveFolder Id="RemoveApplicationProgramsFolder" On="uninstall" />
+            <RegistryValue Root="HKLM" Key="Software\TacticalMapWarGame" Name="Installed"
+                           Type="integer" Value="1" KeyPath="yes" />
+            <RegistryValue Root="HKLM" Key="Software\TacticalMapWarGame" Name="DesktopPath"
+                           Type="string" Value="[INSTALLINGUSERDESKTOP]" />
+          </Component>
+        </Directory>
+      </Directory>
+    </StandardDirectory>
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="Tactical Map War Game" />
+    </StandardDirectory>
+    <Component Id="DesktopShortcut" Directory="INSTALLINGUSERDESKTOP"
+               Guid="A94FF3CF-62B4-4B57-B4EF-806A5236F418"
+               Condition="CREATE_DESKTOP_SHORTCUT = &quot;1&quot;">
+      <Shortcut Id="DesktopGameShortcut" Name="Tactical Map War Game"
+                Target="[INSTALLFOLDER]TacticalMapWarGame.exe" WorkingDirectory="INSTALLFOLDER" />
+      <RegistryValue Root="HKLM" Key="Software\TacticalMapWarGame" Name="DesktopShortcut"
+                     Type="integer" Value="1" KeyPath="yes" />
+    </Component>
+    <Component Id="DesktopUninstallShortcut" Directory="INSTALLINGUSERDESKTOP"
+               Guid="A6BE4516-10E1-4D26-89E6-25B77F92545D">
+      <Shortcut Id="UninstallShortcut" Name="Uninstall Tactical Map War Game"
+                Target="[SystemFolder]msiexec.exe" Arguments="/x [ProductCode]" />
+      <RegistryValue Root="HKLM" Key="Software\TacticalMapWarGame" Name="DesktopUninstallShortcut"
+                     Type="integer" Value="1" KeyPath="yes" />
+    </Component>
+
+    <ComponentGroup Id="GameFiles" Directory="INSTALLFOLDER">
+      <Files Include="dist\publish\**" />
+    </ComponentGroup>
+    <Feature Id="Game">
+      <ComponentGroupRef Id="GameFiles" />
+      <ComponentRef Id="StartMenuShortcut" />
+      <ComponentRef Id="DesktopShortcut" />
+      <ComponentRef Id="DesktopUninstallShortcut" />
+    </Feature>
+
+    <CustomActionRef Id="WixUIValidatePath_X64" />
+    <UI>
+      <TextStyle Id="GameFont" FaceName="Segoe UI" Size="9" />
+      <TextStyle Id="GameTitleFont" FaceName="Segoe UI" Size="12" Bold="yes" />
+      <TextStyle Id="WixUI_Font_Title" FaceName="Segoe UI" Size="9" Bold="yes" />
+      <TextStyle Id="WixUI_Font_Bigger" FaceName="Segoe UI" Size="12" />
+      <Property Id="DefaultUIFont" Value="GameFont" />
+      <DialogRef Id="BrowseDlg" />
+      <DialogRef Id="InvalidDirDlg" />
+      <DialogRef Id="ErrorDlg" />
+      <DialogRef Id="FatalError" />
+      <DialogRef Id="UserExit" />
+      <DialogRef Id="ExitDialog" />
+      <DialogRef Id="ProgressDlg" />
+      <DialogRef Id="FilesInUse" />
+      <DialogRef Id="MsiRMFilesInUse" />
+      <DialogRef Id="PrepareDlg" />
+      <DialogRef Id="ResumeDlg" />
+
+      <Dialog Id="InstallOptions" Width="370" Height="270" Title="Tactical Map War Game Setup">
+        <Control Id="Title" Type="Text" X="20" Y="15" Width="330" Height="25"
+                 Text="{\GameTitleFont}Choose installation options" />
+        <Control Id="FolderLabel" Type="Text" X="20" Y="55" Width="330" Height="20"
+                 Text="Install the game in this folder:" />
+        <Control Id="Folder" Type="PathEdit" X="20" Y="80" Width="250" Height="18"
+                 Property="WIXUI_INSTALLDIR" Indirect="yes" />
+        <Control Id="Browse" Type="PushButton" X="280" Y="80" Width="65" Height="18" Text="Browse...">
+          <Publish Property="_BrowseProperty" Value="[WIXUI_INSTALLDIR]" Order="1" />
+          <Publish Event="SpawnDialog" Value="BrowseDlg" Order="2" />
+        </Control>
+        <Control Id="Desktop" Type="CheckBox" X="20" Y="120" Width="320" Height="20"
+                 Property="CREATE_DESKTOP_SHORTCUT" CheckBoxValue="1"
+                 Text="Create a desktop game shortcut for me" />
+        <Control Id="Install" Type="PushButton" X="220" Y="230" Width="60" Height="20" Default="yes" Text="Install">
+          <Publish Event="SetTargetPath" Value="[WIXUI_INSTALLDIR]" Order="1" />
+          <Publish Event="DoAction" Value="WixUIValidatePath_X64" Order="2" />
+          <Publish Event="SpawnDialog" Value="InvalidDirDlg" Order="3" Condition="WIXUI_INSTALLDIR_VALID &lt;&gt; &quot;1&quot;" />
+          <Publish Event="EndDialog" Value="Return" Order="4" Condition="WIXUI_INSTALLDIR_VALID = &quot;1&quot;" />
+        </Control>
+        <Control Id="Cancel" Type="PushButton" X="290" Y="230" Width="60" Height="20" Cancel="yes" Text="Cancel">
+          <Publish Event="SpawnDialog" Value="CancelDlg" />
+        </Control>
+      </Dialog>
+      <Publish Dialog="BrowseDlg" Control="OK" Event="DoAction" Value="WixUIValidatePath_X64" Order="3" />
+      <Publish Dialog="BrowseDlg" Control="OK" Event="SpawnDialog" Value="InvalidDirDlg" Order="4"
+               Condition="WIXUI_INSTALLDIR_VALID &lt;&gt; &quot;1&quot;" />
+      <Publish Dialog="ExitDialog" Control="Finish" Event="EndDialog" Value="Return" />
+    </UI>
+    <UIRef Id="WixUI_Common" />
+  </Package>
+</Wix>

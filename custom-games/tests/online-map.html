@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Online map regression test</title></head>
+<body>
+  <h1>Online map regression test</h1>
+  <pre id="result">Running...</pre>
+  <iframe id="host" src="../tactical_map_war_game_v2_1_custom_map_edition.html" hidden></iframe>
+  <iframe id="guest" src="../tactical_map_war_game_v2_1_custom_map_edition.html" hidden></iframe>
+  <script>
+    const result = document.getElementById('result');
+    const frames = ['host', 'guest'].map(id => document.getElementById(id));
+
+    function loaded(frame) {
+      if (frame.contentDocument?.URL.includes('tactical_map_war_game') &&
+          frame.contentDocument.readyState === 'complete') return Promise.resolve();
+      return new Promise(resolve => frame.addEventListener('load', resolve, { once: true }));
+    }
+
+    async function waitFor(predicate, message) {
+      const end = Date.now() + 20000;
+      while (Date.now() < end) {
+        if (predicate()) return;
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
+      throw new Error(message);
+    }
+
+    Promise.all(frames.map(loaded)).then(async () => {
+      const [host, guest] = frames.map(frame => frame.contentWindow);
+      let hostPeer, guestPeer;
+      try {
+        const response = await fetch('../maps/nyc%20map.txt');
+        if (!response.ok) throw new Error('Could not read the NYC map.');
+        const text = await response.text();
+        if (new TextEncoder().encode(text).length < 16300) throw new Error('Map fixture is too small.');
+        host.__testMapText = text;
+        host.eval(`lastMapSrc = { text: window.__testMapText, name: 'nyc map.txt', kind: 'any' };
+          applyCustomMap(parseAnyMapText(lastMapSrc.text, lastMapSrc.name)); NET.role = 1;`);
+        guest.eval('NET.role = 2;');
+
+        function createPeer(window, id) {
+          const RealWebSocket = window.WebSocket;
+          window.WebSocket = class { close() {} };
+          try {
+            const peer = new window.Peer(id, { host: '127.0.0.1', port: 1, secure: false, config: { iceServers: [] } });
+            peer.on('error', error => console.error(error));
+            return peer;
+          } finally {
+            window.WebSocket = RealWebSocket;
+          }
+        }
+
+        hostPeer = createPeer(host, 'local-host');
+        guestPeer = createPeer(guest, 'local-guest');
+        hostPeer.socket.send = message => setTimeout(() => guestPeer._handleMessage({ ...message, src: hostPeer.id }), 0);
+        guestPeer.socket.send = message => setTimeout(() => hostPeer._handleMessage({ ...message, src: guestPeer.id }), 0);
+        hostPeer.on('connection', connection => host.netAttach(connection));
+        guest.netAttach(guestPeer.connect('local-host', { reliable: true, serialization: 'binary' }));
+
+        await waitFor(() => guest.eval("state.customMap && lastMapSrc?.name === 'nyc map.txt'"),
+          'Guest did not receive the map during connection.');
+        const mapData = window => window.eval(`JSON.stringify({
+          cols: state.customMap.cols, rows: state.customMap.rows, types: state.customMap.types,
+          totalElev: state.customMap.totalElev, groundElev: state.customMap.groundElev,
+          bldgHeight: state.customMap.bldgHeight, pins: state.customMap.pins,
+          width: MAP_W, height: MAP_H
+        })`);
+        if (mapData(host) !== mapData(guest)) throw new Error('The received map does not match the host map.');
+
+        host.resetToDefaultMap();
+        await waitFor(() => guest.eval('state.customMap === null'), 'Default map did not synchronize.');
+        host.eval(`lastMapSrc = { text: window.__testMapText, name: 'nyc map.txt', kind: 'any' };
+          applyCustomMap(parseAnyMapText(lastMapSrc.text, lastMapSrc.name));`);
+        await waitFor(() => guest.eval("state.customMap && lastMapSrc?.name === 'nyc map.txt'"),
+          'Guest did not receive the map after an online map change.');
+        if (mapData(host) !== mapData(guest)) throw new Error('The changed map does not match.');
+
+        hostPeer.destroy();
+        guestPeer.destroy();
+        await waitFor(() => !host.eval('netActive()') && !guest.eval('netActive()'),
+          'The first connection did not close.');
+        guest.eval('UNIT_DEFS.infantry.atk++; NET.role = 2;');
+        host.eval('NET.role = 1;');
+        hostPeer = createPeer(host, 'mismatch-host');
+        guestPeer = createPeer(guest, 'mismatch-guest');
+        hostPeer.socket.send = message => setTimeout(() => guestPeer._handleMessage({ ...message, src: hostPeer.id }), 0);
+        guestPeer.socket.send = message => setTimeout(() => hostPeer._handleMessage({ ...message, src: guestPeer.id }), 0);
+        hostPeer.on('connection', connection => host.netAttach(connection));
+        guest.netAttach(guestPeer.connect('mismatch-host', { reliable: true, serialization: 'binary' }));
+        await waitFor(() => guest.document.getElementById('net-status').textContent.includes('same game and balance settings'),
+          'A player with different balance settings was not rejected.');
+        result.textContent = 'PASS: NYC maps synchronize over WebRTC; mismatched balance settings are rejected.';
+        result.dataset.status = 'passed';
+      } catch (error) {
+        result.textContent = error.stack || String(error);
+        result.dataset.status = 'failed';
+      } finally {
+        hostPeer?.destroy();
+        guestPeer?.destroy();
+      }
+    }).catch(error => {
+      result.textContent = error.stack || String(error);
+      result.dataset.status = 'failed';
+    });
+  </script>
+</body>
+</html>

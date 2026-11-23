@@ -8,20 +8,20 @@
  *                   maxBridgeSpan, maxBarrierLength, maxResupplyCharges, stealableAmmo, requiresRtbResupply,
  *                   droneRange, droneRevealRange, droneDurationTurns, canProduceAir,
  *                   canReloadAir, sonarRange, missileInterceptDie, startsSubmerged,
- *                   transientUntilQuietMove)
+ *                   transientUntilQuietMove, lowAltitudeFire)
  * Structure fields: hp, isBase, isResupply, produces (unit keys), needsWater
  */
 
 const UNIT_DEFS = {
   infantry: {
     name: 'Infantry', shape: 'Square', category: 'land',
-    speed: 1, hp: 2, atk: 2, range: 1, prodCooldown: 2, actionCost: 0,
-    notes: 'Attacks Inf, SpecOps, Light Veh & Bases. Converts to Resupply Hub (4 AP when Secured).'
+    speed: 1, hp: 2, atk: 2, range: 1, prodCooldown: 2, actionCost: 0, canEnterBuilding: true,
+    notes: 'Foot unit; enters buildings. Attacks land except Heavy Vehicles. Converts to Resupply Hub (4 AP when Secured).'
   },
   specops: {
     name: 'Special Forces', shape: 'Egg', category: 'land',
-    speed: 2, hp: 4, atk: 3, range: 1, prodCooldown: 3, actionCost: 0,
-    notes: 'Elite land unit. Attacks all land units & bases. Can repair general ruins.'
+    speed: 2, hp: 4, atk: 3, range: 1, prodCooldown: 3, actionCost: 0, canEnterBuilding: true,
+    notes: 'Elite foot unit; repairs ruins, breaches high-rises without staging and has close-quarters advantage.'
   },
   light_veh: {
     name: 'Light Vehicle', shape: 'Small Bead', category: 'land',
@@ -40,8 +40,8 @@ const UNIT_DEFS = {
   },
   plane: {
     name: 'Plane', shape: 'Small Heart', category: 'air',
-    speed: 4, hp: 6, atk: 5, range: 3, prodCooldown: 4, actionCost: 0,
-    notes: 'Fast air strike (3" range). Flies over B tiles; immune to land except Air Defense.'
+    speed: 4, hp: 6, atk: 5, range: 3, prodCooldown: 4, actionCost: 0, lowAltitudeFire: true,
+    notes: 'Fast air strike (3" range); immune to land except Air Defense. Flies over buildings, but high-rises block its low-altitude fire.'
   },
   ship: {
     name: 'Ship', shape: 'Small Star', category: 'sea',
@@ -58,7 +58,7 @@ const UNIT_DEFS = {
     name: 'Sniper Team', shape: 'Diamond', category: 'land',
     speed: 2, hp: 2, atk: 4, range: 2, prodCooldown: 2, actionCost: 0,
     canEnterBuilding: true, stealthInBuilding: true, instantKillOnBuildingCollapse: true,
-    notes: 'Can enter B tiles; hidden inside buildings until firing. Killed if B tile is destroyed.'
+    notes: 'Foot unit; hidden in buildings. Gains 0.5"/1" range in mid/high buildings.'
   },
   bridgelayer: {
     name: 'Armored Bridgelayer (AVLB)', shape: 'Trapezoid', category: 'land',
@@ -86,8 +86,8 @@ const UNIT_DEFS = {
   drone_operator: {
     name: 'Drone Operator', shape: 'Hexagon', category: 'land',
     speed: 2, hp: 3, atk: 1, range: 5, droneRange: 5, droneRevealRange: 2,
-    droneDurationTurns: 2, prodCooldown: 2, actionCost: 1, requiresLogisticsResupply: true,
-    notes: 'Launches 2-turn drone (5" range, reveals enemies & hidden Snipers in 2"). Reloads at Base/Hub/Convoy.'
+    droneDurationTurns: 2, prodCooldown: 2, actionCost: 1, requiresLogisticsResupply: true, canEnterBuilding: true,
+    notes: 'Foot unit; gains 0.5"/1" attack range in mid/high buildings. Launches a 2-turn drone within 5" (2" reveal); reloads at logistics sources.'
   },
   aircraft_carrier: {
     name: 'Aircraft Carrier (CVN)', shape: 'Long Oval', category: 'sea',
